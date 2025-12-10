@@ -1,0 +1,5 @@
+{
+  "name": "Nexus HR Portal",
+  "description": "A comprehensive HR management system simulating Microsoft Login, featuring role-based access for Employees, Managers, and HR. Includes leave management workflows, bulk payslip/holiday uploads, and an AI-powered policy assistant.",
+  "requestFramePermissions": []
+}
