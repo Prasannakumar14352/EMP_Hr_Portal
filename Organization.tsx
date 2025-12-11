@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from './context';
 import { UserRole, User, Department, Project } from './types';
-import { Briefcase, FolderPlus, Trash2, Building2, Users, Edit2, Layers, CheckCircle, Filter, Plus, X } from 'lucide-react';
+import { Briefcase, FolderPlus, Trash2, Building2, Users, Edit2, Layers, CheckCircle, Filter, Plus, X, ListTodo } from 'lucide-react';
 
 const Organization = () => {
   const { currentUser, departments, addDepartment, updateDepartment, deleteDepartment, projects, addProject, updateProject, deleteProject, users, updateUser, notify } = useAppContext();
@@ -17,8 +17,11 @@ const Organization = () => {
 
   // Form States
   const [deptForm, setDeptForm] = useState<{ id?: string, name: string, description: string, managerId: string }>({ name: '', description: '', managerId: '' });
-  const [projForm, setProjForm] = useState<{ id?: string, name: string, description: string, status: string }>({ name: '', description: '', status: 'Active' });
+  const [projForm, setProjForm] = useState<{ id?: string, name: string, description: string, status: string, tasks: string[] }>({ name: '', description: '', status: 'Active', tasks: [] });
   
+  // Task Management State (Local to modal)
+  const [newTaskInput, setNewTaskInput] = useState('');
+
   // Allocation State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [allocForm, setAllocForm] = useState<{ departmentId: string, projectIds: string[] }>({ departmentId: '', projectIds: [] });
@@ -46,17 +49,30 @@ const Organization = () => {
   const handleProjSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (projForm.id) {
-       updateProject(projForm.id, { name: projForm.name, description: projForm.description, status: projForm.status as any });
+       updateProject(projForm.id, { name: projForm.name, description: projForm.description, status: projForm.status as any, tasks: projForm.tasks });
     } else {
-       addProject({ name: projForm.name, description: projForm.description, status: projForm.status as any });
+       addProject({ name: projForm.name, description: projForm.description, status: projForm.status as any, tasks: projForm.tasks });
     }
     setShowProjModal(false);
-    setProjForm({ name: '', description: '', status: 'Active' });
+    setProjForm({ name: '', description: '', status: 'Active', tasks: [] });
+    setNewTaskInput('');
   };
 
   const openProjEdit = (proj: Project) => {
-    setProjForm({ id: proj.id, name: proj.name, description: proj.description || '', status: proj.status });
+    setProjForm({ id: proj.id, name: proj.name, description: proj.description || '', status: proj.status, tasks: proj.tasks || [] });
+    setNewTaskInput('');
     setShowProjModal(true);
+  };
+
+  const addTaskToProject = () => {
+    if (newTaskInput.trim()) {
+      setProjForm(prev => ({ ...prev, tasks: [...prev.tasks, newTaskInput.trim()] }));
+      setNewTaskInput('');
+    }
+  };
+
+  const removeTaskFromProject = (index: number) => {
+    setProjForm(prev => ({ ...prev, tasks: prev.tasks.filter((_, i) => i !== index) }));
   };
 
   const openAllocation = (user: User) => {
@@ -273,7 +289,7 @@ const Organization = () => {
                  </div>
 
                  {isHR && (
-                   <button onClick={() => { setProjForm({ name: '', description: '', status: 'Active' }); setShowProjModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 shadow-sm flex items-center gap-2 whitespace-nowrap">
+                   <button onClick={() => { setProjForm({ name: '', description: '', status: 'Active', tasks: [] }); setShowProjModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 shadow-sm flex items-center gap-2 whitespace-nowrap">
                      <FolderPlus size={16} /> New Project
                    </button>
                  )}
@@ -500,6 +516,40 @@ const Organization = () => {
                    <option value="On Hold">On Hold</option>
                    <option value="Completed">Completed</option>
                  </select>
+               </div>
+
+               {/* Predefined Tasks Management */}
+               <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Predefined Tasks</label>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                     <div className="flex gap-2 mb-3">
+                        <input 
+                           type="text" 
+                           placeholder="Add task name..." 
+                           className="flex-1 border rounded-lg p-2 text-sm"
+                           value={newTaskInput}
+                           onChange={e => setNewTaskInput(e.target.value)}
+                           onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTaskToProject())}
+                        />
+                        <button type="button" onClick={addTaskToProject} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700">
+                           <Plus size={16} />
+                        </button>
+                     </div>
+                     <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {projForm.tasks.map((task, idx) => (
+                           <div key={idx} className="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                              <div className="flex items-center gap-2">
+                                 <ListTodo size={14} className="text-gray-400" />
+                                 <span className="text-sm text-gray-700">{task}</span>
+                              </div>
+                              <button type="button" onClick={() => removeTaskFromProject(idx)} className="text-gray-400 hover:text-red-500 p-1">
+                                 <X size={14} />
+                              </button>
+                           </div>
+                        ))}
+                        {projForm.tasks.length === 0 && <span className="text-xs text-gray-400 italic">No tasks defined.</span>}
+                     </div>
+                  </div>
                </div>
                
                {/* Manage Team (Only when editing) */}

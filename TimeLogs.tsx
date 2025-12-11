@@ -43,7 +43,7 @@ const TimeLogs = () => {
   const [entryMethod, setEntryMethod] = useState<'duration' | 'range'>('duration');
   
   // Duration Mode State
-  const [durationInput, setDurationInput] = useState({ hours: '0', minutes: '0' });
+  const [durationInput, setDurationInput] = useState({ hours: '0', minutes: '00' });
   
   // Range Mode State
   const [rangeInput, setRangeInput] = useState({
@@ -76,6 +76,11 @@ const TimeLogs = () => {
     if (h > 0 && m > 0) return `${h}h ${m}m`;
     if (h > 0) return `${h}h`;
     return `${m}m`;
+  };
+  
+  const getProjectName = (id?: string) => {
+      if (!id || id === NO_PROJECT_ID) return 'General Task';
+      return projects.find(p => p.id === id)?.name || 'Unknown Project';
   };
 
   const getWeekDays = (date: Date) => {
@@ -156,6 +161,16 @@ const TimeLogs = () => {
     return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [timeEntries, currentUser, filterProject, filterStatus, filterUser, searchEmployee, viewDate, isHR, dateRange, weekDays, users]);
 
+  // Project Summaries
+  const projectSummaries = useMemo(() => {
+     const summary: Record<string, number> = {};
+     visibleEntries.forEach(e => {
+        const pid = e.projectId || NO_PROJECT_ID;
+        summary[pid] = (summary[pid] || 0) + e.durationMinutes;
+     });
+     return summary;
+  }, [visibleEntries]);
+
   // Weekly Report Matrix Data
   const weeklyReportData = useMemo(() => {
      const startOfWeek = weekDays[0];
@@ -229,6 +244,24 @@ const TimeLogs = () => {
     setShowBulkDeleteConfirm(false);
   };
 
+  // --- Validation Helpers ---
+  const validateHours = (val: string, min: number, max: number) => {
+      let num = parseInt(val);
+      if (isNaN(num)) return min.toString();
+      if (num < min) return min.toString();
+      if (num > max) return max.toString();
+      return num.toString();
+  };
+
+  const validateMinutes = (val: string) => {
+      let num = parseInt(val);
+      if (isNaN(num)) return '00';
+      // Snap to nearest 15
+      const snapped = Math.round(num / 15) * 15;
+      const final = snapped === 60 ? 0 : snapped;
+      return final.toString().padStart(2, '0');
+  };
+
   const calculateMinutesFromRange = () => {
       let startH = parseInt(rangeInput.startHour);
       let endH = parseInt(rangeInput.endHour);
@@ -245,8 +278,12 @@ const TimeLogs = () => {
       const startTotal = startH * 60 + startM;
       const endTotal = endH * 60 + endM;
 
+      // Validation: End time must be after start time
+      if (endTotal <= startTotal) {
+          return -1; // Flag for error
+      }
+
       let diff = endTotal - startTotal;
-      if (diff < 0) diff += 24 * 60; // Handle overnight (assume next day)
       return diff;
   };
 
@@ -262,6 +299,10 @@ const TimeLogs = () => {
         durationMinutes = h * 60 + m;
     } else {
         durationMinutes = calculateMinutesFromRange();
+        if (durationMinutes === -1) {
+            alert("End time must be after start time.");
+            return;
+        }
     }
     
     if (durationMinutes <= 0) {
@@ -297,7 +338,7 @@ const TimeLogs = () => {
       const m = entry.durationMinutes % 60;
       
       setEntryMethod('duration');
-      setDurationInput({ hours: h.toString(), minutes: m.toString() });
+      setDurationInput({ hours: h.toString(), minutes: m.toString().padStart(2, '0') });
 
       setFormData({
           projectId: entry.projectId || NO_PROJECT_ID,
@@ -341,7 +382,7 @@ const TimeLogs = () => {
       });
       setIsCustomTask(false);
       setEntryMethod('duration');
-      setDurationInput({ hours: '0', minutes: '0' });
+      setDurationInput({ hours: '0', minutes: '00' });
       setRangeInput({
         startHour: '09', startMinute: '00', startPeriod: 'AM',
         endHour: '05', endMinute: '00', endPeriod: 'PM'
@@ -412,22 +453,8 @@ const TimeLogs = () => {
       notify("CSV file downloaded.");
   };
 
-  const getProjectName = (id?: string) => {
-      if (!id || id === NO_PROJECT_ID) return 'General Task';
-      return projects.find(p => p.id === id)?.name || 'Unknown Project';
-  };
-  
   const selectedProjectTasks = projects.find(p => p.id === formData.projectId)?.tasks || [];
   const hasPredefinedTasks = selectedProjectTasks.length > 0;
-
-  const hoursOptions = Array.from({length: 12}, (_, i) => {
-      const val = (i + 1).toString().padStart(2, '0');
-      return <option key={val} value={val}>{val}</option>;
-  });
-  
-  const minutesOptions = ['00', '15', '30', '45'].map(m => (
-      <option key={m} value={m}>{m}</option>
-  ));
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -591,6 +618,23 @@ const TimeLogs = () => {
              Showing {visibleEntries.length} entries
           </div>
        </div>
+
+       {/* --- PROJECT SUMMARY (AGGREGATION) --- */}
+       {Object.keys(projectSummaries).length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-fade-in print:hidden">
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                 <Briefcase size={16} className="text-emerald-600"/> Project Summary
+              </h3>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                  {Object.entries(projectSummaries).map(([projId, totalMinutes]) => (
+                      <div key={projId} className="bg-gray-50 border border-gray-200 rounded-lg p-3 min-w-[150px] flex-shrink-0">
+                          <p className="text-xs text-gray-500 uppercase font-medium truncate mb-1">{getProjectName(projId)}</p>
+                          <p className="text-lg font-bold text-gray-800">{formatDuration(totalMinutes)}</p>
+                      </div>
+                  ))}
+              </div>
+          </div>
+       )}
 
        {/* --- WEEKLY MATRIX VIEW (Only visible in 'Week' mode) --- */}
        {dateRange === 'Week' && (
@@ -815,27 +859,31 @@ const TimeLogs = () => {
                         <div className="flex-1">
                            <label className="block text-xs text-gray-500 mb-1">Hours</label>
                            <div className="relative">
-                              <select 
-                                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                              <input 
+                                 type="number"
+                                 min="0"
+                                 max="12"
+                                 className="w-full bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                                  value={durationInput.hours}
                                  onChange={e => setDurationInput({...durationInput, hours: e.target.value})}
-                              >
-                                 <option value="0">0</option>
-                                 {hoursOptions}
-                              </select>
+                                 onBlur={e => setDurationInput({...durationInput, hours: validateHours(e.target.value, 0, 12)})}
+                              />
                            </div>
                         </div>
                         <span className="text-gray-400 font-bold mt-4">:</span>
                         <div className="flex-1">
                            <label className="block text-xs text-gray-500 mb-1">Minutes</label>
                            <div className="relative">
-                              <select 
-                                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                              <input 
+                                 type="number"
+                                 step="15"
+                                 min="0"
+                                 max="59"
+                                 className="w-full bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
                                  value={durationInput.minutes}
                                  onChange={e => setDurationInput({...durationInput, minutes: e.target.value})}
-                              >
-                                 {minutesOptions}
-                              </select>
+                                 onBlur={e => setDurationInput({...durationInput, minutes: validateMinutes(e.target.value)})}
+                              />
                            </div>
                         </div>
                      </div>
@@ -843,16 +891,50 @@ const TimeLogs = () => {
                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3">
                         <div className="flex items-center gap-2">
                            <span className="text-xs font-bold text-gray-500 w-10">Start:</span>
-                           <select className="bg-white border rounded p-1 text-sm" value={rangeInput.startHour} onChange={e => setRangeInput({...rangeInput, startHour: e.target.value})}>{hoursOptions}</select>
+                           <input 
+                              type="number" 
+                              min="1" 
+                              max="12"
+                              className="bg-white border rounded p-1 text-sm w-16 text-center" 
+                              value={rangeInput.startHour} 
+                              onChange={e => setRangeInput({...rangeInput, startHour: e.target.value})}
+                              onBlur={e => setRangeInput({...rangeInput, startHour: validateHours(e.target.value, 1, 12)})}
+                           />
                            <span className="text-gray-400">:</span>
-                           <select className="bg-white border rounded p-1 text-sm" value={rangeInput.startMinute} onChange={e => setRangeInput({...rangeInput, startMinute: e.target.value})}>{minutesOptions}</select>
+                           <input 
+                              type="number" 
+                              min="0" 
+                              max="59" 
+                              step="15"
+                              className="bg-white border rounded p-1 text-sm w-16 text-center" 
+                              value={rangeInput.startMinute} 
+                              onChange={e => setRangeInput({...rangeInput, startMinute: e.target.value})}
+                              onBlur={e => setRangeInput({...rangeInput, startMinute: validateMinutes(e.target.value)})}
+                           />
                            <select className="bg-white border rounded p-1 text-sm ml-2" value={rangeInput.startPeriod} onChange={e => setRangeInput({...rangeInput, startPeriod: e.target.value})}><option>AM</option><option>PM</option></select>
                         </div>
                         <div className="flex items-center gap-2">
                            <span className="text-xs font-bold text-gray-500 w-10">End:</span>
-                           <select className="bg-white border rounded p-1 text-sm" value={rangeInput.endHour} onChange={e => setRangeInput({...rangeInput, endHour: e.target.value})}>{hoursOptions}</select>
+                           <input 
+                              type="number" 
+                              min="1" 
+                              max="12"
+                              className="bg-white border rounded p-1 text-sm w-16 text-center" 
+                              value={rangeInput.endHour} 
+                              onChange={e => setRangeInput({...rangeInput, endHour: e.target.value})}
+                              onBlur={e => setRangeInput({...rangeInput, endHour: validateHours(e.target.value, 1, 12)})}
+                           />
                            <span className="text-gray-400">:</span>
-                           <select className="bg-white border rounded p-1 text-sm" value={rangeInput.endMinute} onChange={e => setRangeInput({...rangeInput, endMinute: e.target.value})}>{minutesOptions}</select>
+                           <input 
+                              type="number" 
+                              min="0" 
+                              max="59" 
+                              step="15"
+                              className="bg-white border rounded p-1 text-sm w-16 text-center" 
+                              value={rangeInput.endMinute} 
+                              onChange={e => setRangeInput({...rangeInput, endMinute: e.target.value})}
+                              onBlur={e => setRangeInput({...rangeInput, endMinute: validateMinutes(e.target.value)})}
+                           />
                            <select className="bg-white border rounded p-1 text-sm ml-2" value={rangeInput.endPeriod} onChange={e => setRangeInput({...rangeInput, endPeriod: e.target.value})}><option>AM</option><option>PM</option></select>
                         </div>
                      </div>
