@@ -3,7 +3,7 @@ import { useAppContext } from './context';
 import { UserRole, Holiday } from './types';
 import { 
   Upload, Calendar as CalendarIcon, List, Info, 
-  CheckCircle, AlertCircle, Plus, Trash2, X, Clock, Edit2, FileDown, FileSpreadsheet
+  CheckCircle, AlertCircle, Plus, Trash2, X, Clock, Edit2, FileDown, FileSpreadsheet, StickyNote
 } from 'lucide-react';
 
 // Declare XLSX globally from the script tag in index.html
@@ -259,7 +259,7 @@ const Holidays = () => {
                     <div 
                       key={h.id} 
                       onClick={() => setSelectedHoliday(h)}
-                      className={`text-[10px] px-1.5 py-1 rounded cursor-pointer truncate transition hover:opacity-90 font-medium border shadow-sm ${
+                      className={`text-[10px] px-1.5 py-1 rounded cursor-pointer truncate transition hover:opacity-90 font-medium border shadow-sm relative pr-4 ${
                         h.type === 'Public' 
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
                         : 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100'
@@ -267,6 +267,10 @@ const Holidays = () => {
                       title={`${h.name}${h.description ? ': ' + h.description : ''}`}
                     >
                       {h.name}
+                      {/* Visual indicator for notes */}
+                      {h.description && (
+                         <span className="absolute right-0.5 top-0.5 bottom-0.5 w-1 bg-current opacity-20 rounded-full"></span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -378,7 +382,11 @@ const Holidays = () => {
                           <p className="text-sm text-gray-500 mb-1">
                              {new Date(h.date).toLocaleDateString(undefined, { weekday: 'long' })} • {h.type} Holiday
                           </p>
-                          {h.description && <p className="text-xs text-gray-400 truncate" title={h.description}>{h.description}</p>}
+                          {h.description && (
+                             <p className="text-xs text-gray-400 truncate flex items-center gap-1" title={h.description}>
+                                <Info size={12} /> {h.description}
+                             </p>
+                          )}
                        </div>
                        {isHR && (
                           <div className="flex gap-2">
@@ -472,8 +480,10 @@ const Holidays = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
-                <textarea rows={3} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Additional info..."></textarea>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                  Notes <StickyNote size={12} className="text-gray-400"/>
+                </label>
+                <textarea rows={3} className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Additional details regarding the holiday..."></textarea>
               </div>
               <div className="flex justify-end space-x-2 pt-2">
                 <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancel</button>
@@ -499,9 +509,15 @@ const Holidays = () => {
                   {selectedHoliday.type}
                 </span>
               </div>
-              <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                {selectedHoliday.description || "No specific details provided for this holiday."}
-              </p>
+              {selectedHoliday.description ? (
+                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-6">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-1">Notes</p>
+                    <p className="text-gray-700 text-sm leading-relaxed">{selectedHoliday.description}</p>
+                 </div>
+              ) : (
+                 <p className="text-gray-400 text-sm italic mb-6">No additional notes.</p>
+              )}
+              
               <button onClick={() => setSelectedHoliday(null)} className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition">
                 Close
               </button>

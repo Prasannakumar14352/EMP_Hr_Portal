@@ -3,7 +3,7 @@ import { useAppContext } from './context';
 import { UserRole, LeaveStatus, LeaveRequest, LeaveTypeConfig, User } from './types';
 import { 
   Upload, Paperclip, CheckSquare, Search, Edit2, Calendar as CalendarIcon, 
-  List, Settings, Trash2, Plus, Calendar, CheckCircle, XCircle, Users, AlertTriangle, Flame, AlertCircle, ChevronLeft, ChevronRight, ChevronDown, X, CheckCheck
+  List, Settings, Trash2, Plus, Calendar, CheckCircle, XCircle, Users, AlertTriangle, Flame, AlertCircle, ChevronLeft, ChevronRight, ChevronDown, X, CheckCheck, PieChart, Layers
 } from 'lucide-react';
 
 // Custom MultiSelect Component
@@ -103,7 +103,7 @@ const Leaves = () => {
   const [isEditing, setIsEditing] = useState<string | null>(null);
   
   const [editingType, setEditingType] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'settings' | 'team'>('list');
+  const [viewMode, setViewMode] = useState<'requests' | 'balances' | 'types' | 'calendar' | 'team'>('requests');
   const [searchQuery, setSearchQuery] = useState('');
   const [reviewComment, setReviewComment] = useState('');
   
@@ -146,6 +146,7 @@ const Leaves = () => {
   }>({ name: '', days: 10, description: '', isActive: true });
 
   const isManager = currentUser?.role === UserRole.MANAGER || currentUser?.role === UserRole.HR;
+  const isHR = currentUser?.role === UserRole.HR;
 
   // --- Helper Functions ---
   const getDaysDiff = (start: string, end: string) => {
@@ -199,6 +200,7 @@ const Leaves = () => {
     );
   }, [visibleLeaves, searchQuery]);
 
+  // Pending Actions Logic
   const pendingApprovals = searchedLeaves.filter(l => 
     (currentUser?.role === UserRole.MANAGER && l.status === LeaveStatus.PENDING_MANAGER && l.userId !== currentUser.id) ||
     (currentUser?.role === UserRole.HR && l.status === LeaveStatus.PENDING_HR)
@@ -311,9 +313,17 @@ const Leaves = () => {
       [LeaveStatus.APPROVED]: 'bg-green-100 text-green-700 border-green-200',
       [LeaveStatus.REJECTED]: 'bg-red-100 text-red-700 border-red-200',
       [LeaveStatus.PENDING_MANAGER]: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-      [LeaveStatus.PENDING_HR]: 'bg-orange-100 text-orange-700 border-orange-200',
+      [LeaveStatus.PENDING_HR]: 'bg-purple-100 text-purple-700 border-purple-200',
     };
-    return <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${styles[status]}`}>{status.replace('_', ' ')}</span>;
+    
+    const displayNames = {
+      [LeaveStatus.APPROVED]: 'Approved',
+      [LeaveStatus.REJECTED]: 'Rejected',
+      [LeaveStatus.PENDING_MANAGER]: 'Pending Manager',
+      [LeaveStatus.PENDING_HR]: 'Pending HR',
+    };
+
+    return <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${styles[status]}`}>{displayNames[status]}</span>;
   };
 
   // --- Manager Calendar View Component ---
@@ -408,94 +418,80 @@ const Leaves = () => {
     );
   };
 
-  // --- Manager Team View Component ---
   const TeamView = () => {
-      // Direct reports logic for Team View
-      const directReports = users.filter(u => u.managerId === currentUser?.id);
-      
-      return (
-          <div className="flex flex-col md:flex-row gap-6 animate-fade-in">
-              {/* Reports List */}
-              <div className="md:w-1/3 space-y-3">
-                  <h3 className="font-bold text-gray-700 mb-2">My Team</h3>
-                  {directReports.map(u => (
-                      <div 
-                        key={u.id} 
-                        onClick={() => setSelectedReportId(u.id)}
-                        className={`p-4 rounded-xl border cursor-pointer transition flex items-center gap-3 ${selectedReportId === u.id ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white hover:border-emerald-300'}`}
-                      >
-                          <img src={u.avatar} className="w-10 h-10 rounded-full" />
-                          <div>
-                              <p className="font-bold text-gray-800 text-sm">{u.name}</p>
-                              <p className="text-xs text-gray-500">{u.jobTitle}</p>
-                          </div>
-                          <div className="ml-auto">
-                              <ChevronRight size={16} className="text-gray-400"/>
-                          </div>
-                      </div>
-                  ))}
-                  {directReports.length === 0 && <p className="text-gray-500 text-sm italic">No direct reports found.</p>}
-              </div>
+    // Show direct reports
+    const myTeam = users.filter(u => u.managerId === currentUser?.id);
 
-              {/* Report Detail View */}
-              <div className="md:w-2/3 bg-white rounded-xl border border-gray-200 p-6 min-h-[400px]">
-                  {selectedReportId ? (
-                      <div>
-                          {(() => {
-                              const user = users.find(u => u.id === selectedReportId);
-                              const userLeaves = leaves.filter(l => l.userId === selectedReportId);
-                              return (
-                                  <>
-                                    <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
-                                        <img src={user?.avatar} className="w-16 h-16 rounded-full border-2 border-emerald-100"/>
-                                        <div>
-                                            <h3 className="text-xl font-bold text-gray-900">{user?.name}</h3>
-                                            <p className="text-sm text-gray-500">{user?.jobTitle} • {user?.department}</p>
-                                        </div>
-                                    </div>
-
-                                    <h4 className="font-bold text-gray-800 mb-3">Leave Balances</h4>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
-                                        {leaveTypes.filter(t => t.isActive).map(t => (
-                                            <div key={t.id} className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                                <span className="text-xs text-gray-500 uppercase block mb-1">{t.name}</span>
-                                                <span className="text-lg font-bold text-emerald-600">{getBalance(t.name, t.days, user?.id)}</span>
-                                                <span className="text-xs text-gray-400">/{t.days}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <h4 className="font-bold text-gray-800 mb-3">Recent Requests</h4>
-                                    <div className="space-y-3">
-                                        {userLeaves.length > 0 ? userLeaves.slice(0, 5).map(l => (
-                                            <div key={l.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-gray-50">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-medium text-sm">{l.type}</span>
-                                                        {l.isUrgent && <span className="bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1"><Flame size={10} /> Urgent</span>}
-                                                    </div>
-                                                    <p className="text-xs text-gray-500">{new Date(l.startDate).toLocaleDateString()} - {new Date(l.endDate).toLocaleDateString()}</p>
-                                                </div>
-                                                <StatusBadge status={l.status} />
-                                            </div>
-                                        )) : <p className="text-gray-500 text-sm">No leave history.</p>}
-                                    </div>
-                                  </>
-                              );
-                          })()}
-                      </div>
-                  ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                          <Users size={48} className="mb-4 opacity-50" />
-                          <p>Select a team member to view details</p>
-                      </div>
-                  )}
-              </div>
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+        {myTeam.map(member => {
+           // Calculate balances for this user
+           const memberLeaves = leaves.filter(l => l.userId === member.id);
+           
+           return (
+             <div key={member.id} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
+                <div className="flex items-center space-x-4 mb-4">
+                  <img src={member.avatar} alt={member.name} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
+                  <div>
+                    <h4 className="font-bold text-gray-800">{member.name}</h4>
+                    <p className="text-xs text-gray-500">{member.jobTitle || 'Team Member'}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <h5 className="text-xs font-bold text-gray-500 uppercase border-b border-gray-100 pb-1">Leave Balances</h5>
+                  {leaveTypes.filter(t => t.isActive).slice(0, 3).map(type => {
+                     const used = memberLeaves
+                        .filter(l => l.type === type.name && l.status === LeaveStatus.APPROVED)
+                        .reduce((acc, l) => acc + getDaysDiff(l.startDate, l.endDate), 0);
+                     const balance = Math.max(0, type.days - used);
+                     const percent = Math.min(100, Math.round((balance / type.days) * 100));
+                     
+                     return (
+                       <div key={type.id}>
+                         <div className="flex justify-between text-xs mb-1">
+                           <span className="text-gray-600">{type.name}</span>
+                           <span className="font-medium text-gray-800">{balance} / {type.days}</span>
+                         </div>
+                         <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                           <div className={`h-1.5 rounded-full transition-all duration-500 ${balance < 3 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${percent}%` }}></div>
+                         </div>
+                       </div>
+                     );
+                  })}
+                </div>
+                
+                <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
+                   <button 
+                     onClick={() => {
+                        setSearchQuery(member.name);
+                        setViewMode('requests');
+                     }}
+                     className="text-xs text-emerald-600 font-medium hover:underline flex items-center gap-1"
+                   >
+                     <List size={12} /> View History
+                   </button>
+                   {currentUser?.role === UserRole.HR && (
+                      <span className="text-[10px] text-gray-400">HR View</span>
+                   )}
+                </div>
+             </div>
+           );
+        })}
+        {myTeam.length === 0 && (
+          <div className="col-span-full text-center py-12 text-gray-500 bg-white rounded-xl border border-dashed border-gray-300">
+             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Users size={32} className="text-gray-300" />
+             </div>
+             <p className="font-medium text-gray-600">No direct reports found.</p>
+             <p className="text-xs text-gray-400 mt-1">Employees assigned to you will appear here.</p>
           </div>
-      );
+        )}
+      </div>
+    );
   };
 
-  // Leave Type Card (HR View)
+  // Leave Type Card
   const LeaveTypeCard = ({ config }: { config: LeaveTypeConfig }) => (
     <div className="bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative">
       <div className="flex justify-between items-start mb-2">
@@ -510,41 +506,43 @@ const Leaves = () => {
       
       <div className="mb-4">
         <h4 className={`text-2xl font-bold ${config.color || 'text-gray-800'}`}>{config.days} Days</h4>
-        <p className="text-xs text-gray-500">Default allocation</p>
+        <p className="text-xs text-gray-500">Default allocation per year</p>
       </div>
       
-      <p className="text-sm text-gray-600 mb-6 h-10 line-clamp-2">{config.description}</p>
+      <p className="text-sm text-gray-600 mb-6 h-12 line-clamp-2">{config.description}</p>
       
-      <div className="flex justify-between items-center border-t border-gray-100 pt-4">
-        <div className="flex items-center space-x-2">
-          <div className={`w-10 h-5 rounded-full p-1 cursor-pointer transition-colors ${config.isActive ? 'bg-emerald-500' : 'bg-gray-300'}`} 
-               onClick={() => updateLeaveType(config.id, { isActive: !config.isActive })}>
-            <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${config.isActive ? 'translate-x-5' : ''}`} />
-          </div>
-          <span className="text-xs text-gray-500">{config.isActive ? 'Active' : 'Hidden'}</span>
+      {isHR && (
+        <div className="flex justify-between items-center border-t border-gray-100 pt-4">
+            <div className="flex items-center space-x-2">
+            <div className={`w-10 h-5 rounded-full p-1 cursor-pointer transition-colors ${config.isActive ? 'bg-emerald-500' : 'bg-gray-300'}`} 
+                onClick={() => updateLeaveType(config.id, { isActive: !config.isActive })}>
+                <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${config.isActive ? 'translate-x-5' : ''}`} />
+            </div>
+            <span className="text-xs text-gray-500">{config.isActive ? 'Active' : 'Hidden'}</span>
+            </div>
+            
+            <div className="flex space-x-2">
+            <button 
+                onClick={() => {
+                setEditingType(config.id);
+                setTypeData({ name: config.name, days: config.days, description: config.description, isActive: config.isActive });
+                setShowTypeModal(true);
+                }}
+                className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded"
+            >
+                <Edit2 size={16} />
+            </button>
+            <button 
+                onClick={() => {
+                if (window.confirm('Delete this leave type?')) deleteLeaveType(config.id);
+                }}
+                className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+            >
+                <Trash2 size={16} />
+            </button>
+            </div>
         </div>
-        
-        <div className="flex space-x-2">
-          <button 
-            onClick={() => {
-              setEditingType(config.id);
-              setTypeData({ name: config.name, days: config.days, description: config.description, isActive: config.isActive });
-              setShowTypeModal(true);
-            }}
-            className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded"
-          >
-            <Edit2 size={16} />
-          </button>
-          <button 
-            onClick={() => {
-              if (window.confirm('Delete this leave type?')) deleteLeaveType(config.id);
-            }}
-            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 
@@ -554,24 +552,13 @@ const Leaves = () => {
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">
-            {viewMode === 'settings' ? 'Leave Types Management' : 'Leave Management'}
+            Leave Management
           </h2>
-          {viewMode === 'settings' && <p className="text-gray-500 text-sm">Configure leave types and their default balances</p>}
-          
-          {/* Employee Balance Summary - Only show in list view */}
-          {currentUser?.role === UserRole.EMPLOYEE && viewMode === 'list' && (
-            <div className="flex gap-4 mt-2 overflow-x-auto pb-2">
-              {leaveTypes.filter(t => t.isActive).slice(0, 3).map(t => (
-                <div key={t.id} className="text-sm bg-white border border-gray-200 px-3 py-1 rounded-md whitespace-nowrap shadow-sm">
-                  <span className="text-gray-500">{t.name}:</span> <span className="font-bold text-gray-800">{getBalance(t.name, t.days)}/{t.days}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <p className="text-gray-500 text-sm">Manage time off, check balances, and review policies.</p>
         </div>
         
         <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
-          {viewMode !== 'settings' && (
+          {viewMode !== 'types' && viewMode !== 'balances' && (
             <div className="relative flex-1 md:w-64">
                <input 
                  type="text" 
@@ -584,14 +571,28 @@ const Leaves = () => {
             </div>
           )}
 
-          {/* Toggle Views */}
+          {/* Toggle Views (Tabs) */}
           <div className="flex bg-gray-100 p-1 rounded-lg self-start">
             <button 
-              onClick={() => setViewMode('list')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm transition ${viewMode === 'list' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setViewMode('requests')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm transition ${viewMode === 'requests' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
             >
               <List size={16} />
               <span className="hidden sm:inline">Requests</span>
+            </button>
+            <button 
+              onClick={() => setViewMode('balances')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm transition ${viewMode === 'balances' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <PieChart size={16} />
+              <span className="hidden sm:inline">Balances</span>
+            </button>
+            <button 
+              onClick={() => setViewMode('types')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm transition ${viewMode === 'types' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Layers size={16} />
+              <span className="hidden sm:inline">Types</span>
             </button>
             {isManager && (
               <>
@@ -611,20 +612,11 @@ const Leaves = () => {
                 </button>
               </>
             )}
-            {currentUser?.role === UserRole.HR && (
-              <button 
-                onClick={() => setViewMode('settings')}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm transition ${viewMode === 'settings' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <Settings size={16} />
-                <span className="hidden sm:inline">Settings</span>
-              </button>
-            )}
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 self-start">
-            {viewMode === 'settings' ? (
+            {viewMode === 'types' && isHR ? (
               <button 
                 onClick={() => {
                   setEditingType(null);
@@ -634,11 +626,11 @@ const Leaves = () => {
                 className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition flex items-center space-x-2 text-sm whitespace-nowrap shadow-sm"
               >
                 <Plus size={18} />
-                <span>Add Leave Type</span>
+                <span>Add Type</span>
               </button>
             ) : (
               <>
-                {currentUser?.role === UserRole.HR && (
+                {isHR && viewMode === 'requests' && (
                   <div className="relative">
                      <input type="file" id="leaves-bulk-upload" className="hidden" onChange={(e) => {
                        if (e.target.files?.length) addLeaves([{ 
@@ -653,7 +645,7 @@ const Leaves = () => {
                      </label>
                   </div>
                 )}
-                {currentUser?.role === UserRole.EMPLOYEE && (
+                {currentUser?.role === UserRole.EMPLOYEE && viewMode !== 'types' && (
                   <button 
                     onClick={handleOpenCreate}
                     className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition flex items-center space-x-2 text-sm whitespace-nowrap shadow-sm"
@@ -668,17 +660,52 @@ const Leaves = () => {
         </div>
       </div>
 
-      {/* VIEW: HR SETTINGS */}
-      {viewMode === 'settings' && currentUser?.role === UserRole.HR && (
+      {/* VIEW: LEAVE TYPES (Tab) */}
+      {viewMode === 'types' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-          {leaveTypes.map(type => (
+          {leaveTypes.filter(t => isHR || t.isActive).map(type => (
             <LeaveTypeCard key={type.id} config={type} />
           ))}
+          {leaveTypes.filter(t => isHR || t.isActive).length === 0 && <p className="text-gray-500">No leave types available.</p>}
         </div>
       )}
 
-      {/* VIEW: REQUEST LIST */}
-      {viewMode === 'list' && (
+      {/* VIEW: LEAVE BALANCES (Tab) */}
+      {viewMode === 'balances' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in">
+             {leaveTypes.filter(t => t.isActive).map(t => {
+                const balance = getBalance(t.name, t.days);
+                const percentage = Math.round((balance / t.days) * 100);
+                const isLow = percentage < 20;
+                
+                return (
+                  <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                       <span className={`text-sm font-bold px-3 py-1 rounded-full ${t.color ? t.color.replace('text-', 'bg-').replace('600', '100') + ' ' + t.color : 'bg-gray-100 text-gray-600'}`}>
+                         {t.name}
+                       </span>
+                    </div>
+                    <div className="flex items-baseline space-x-1 mb-2">
+                      <span className={`text-4xl font-bold ${isLow ? 'text-amber-600' : 'text-gray-800'}`}>{balance}</span>
+                      <span className="text-sm text-gray-500">/ {t.days} Days Left</span>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-100 rounded-full h-2 mt-4">
+                       <div 
+                         className={`h-2 rounded-full transition-all duration-500 ${isLow ? 'bg-amber-500' : 'bg-emerald-500'}`} 
+                         style={{ width: `${percentage}%` }}
+                       ></div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">{t.description}</p>
+                  </div>
+                );
+              })}
+          </div>
+      )}
+
+      {/* VIEW: REQUEST LIST (Tab) */}
+      {viewMode === 'requests' && (
         <>
           {pendingApprovals.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -722,6 +749,7 @@ const Leaves = () => {
                          className="flex-1 text-xs border border-orange-200 rounded px-2 py-1 focus:ring-1 focus:ring-orange-500 outline-none"
                          onChange={(e) => setReviewComment(e.target.value)}
                        />
+                       {/* Manager approves to PENDING_HR, HR approves to APPROVED */}
                        <button onClick={() => updateLeaveStatus(leave.id, currentUser.role === UserRole.MANAGER ? LeaveStatus.PENDING_HR : LeaveStatus.APPROVED, reviewComment)} className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200"><CheckCircle size={18}/></button>
                        <button onClick={() => {
                            const reason = prompt("Reason for rejection:");
@@ -747,7 +775,7 @@ const Leaves = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {(currentUser?.role === UserRole.EMPLOYEE ? searchedLeaves.filter(l => l.userId === currentUser.id) : visibleLeaves).map(leave => (
+                  {searchedLeaves.map(leave => (
                     <tr key={leave.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-3">
@@ -778,13 +806,27 @@ const Leaves = () => {
                             <Edit2 size={12} className="mr-1"/> Edit
                           </button>
                         ) : (
-                          ((currentUser?.role === UserRole.HR && leave.status === LeaveStatus.PENDING_HR) || (currentUser?.role === UserRole.MANAGER && leave.status === LeaveStatus.PENDING_MANAGER)) ? (
+                          // Logic for List View Actions
+                          ((currentUser?.role === UserRole.HR && leave.status === LeaveStatus.PENDING_HR) || 
+                           (currentUser?.role === UserRole.MANAGER && leave.status === LeaveStatus.PENDING_MANAGER)) ? (
                             <div className="flex gap-2">
-                                <button onClick={() => updateLeaveStatus(leave.id, currentUser.role === UserRole.MANAGER ? LeaveStatus.PENDING_HR : LeaveStatus.APPROVED, "Approved from list")} className="p-1.5 text-green-600 hover:bg-green-50 rounded transition" title="Approve"><CheckCircle size={18}/></button>
-                                <button onClick={() => {
-                                    const reason = prompt("Reason for rejection:");
-                                    if(reason) updateLeaveStatus(leave.id, LeaveStatus.REJECTED, reason);
-                                }} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition" title="Reject"><XCircle size={18}/></button>
+                                <button 
+                                  onClick={() => updateLeaveStatus(leave.id, currentUser.role === UserRole.MANAGER ? LeaveStatus.PENDING_HR : LeaveStatus.APPROVED, "Approved from list")} 
+                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded transition" 
+                                  title={currentUser.role === UserRole.MANAGER ? "Approve (Forward to HR)" : "Final Approve"}
+                                >
+                                  <CheckCircle size={18}/>
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                      const reason = prompt("Reason for rejection:");
+                                      if(reason) updateLeaveStatus(leave.id, LeaveStatus.REJECTED, reason);
+                                  }} 
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition" 
+                                  title="Reject"
+                                >
+                                  <XCircle size={18}/>
+                                </button>
                             </div>
                           ) : (
                             <span className="text-xs text-gray-400">{leave.managerComment || leave.hrComment || '-'}</span>
@@ -793,7 +835,7 @@ const Leaves = () => {
                       </td>
                     </tr>
                   ))}
-                  {visibleLeaves.length === 0 && (
+                  {searchedLeaves.length === 0 && (
                      <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">No records found.</td></tr>
                   )}
                 </tbody>

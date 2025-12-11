@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppContext } from './context';
 import { TimeEntry, Project, UserRole } from './types';
 import { 
-  Clock, Plus, Filter, FileText, ChevronDown, Download, Calendar as CalendarIcon, MoreHorizontal, Eye, Edit2, Trash2,
-  DollarSign, FileSpreadsheet, File as FileIcon, AlertTriangle, CheckCircle2, CheckSquare, Square, Briefcase, Search
+  Clock, Plus, Filter, FileText, ChevronDown, Calendar as CalendarIcon, Edit2, Trash2,
+  DollarSign, FileSpreadsheet, File as FileIcon, AlertTriangle, CheckCircle2, Briefcase, Search
 } from 'lucide-react';
 
 const TimeLogs = () => {
@@ -43,7 +43,7 @@ const TimeLogs = () => {
   const [entryMethod, setEntryMethod] = useState<'duration' | 'range'>('duration');
   
   // Duration Mode State
-  const [durationInput, setDurationInput] = useState({ hours: '0', minutes: '00' });
+  const [durationInput, setDurationInput] = useState({ hours: '8', minutes: '00' });
   
   // Range Mode State
   const [rangeInput, setRangeInput] = useState({
@@ -57,6 +57,13 @@ const TimeLogs = () => {
   const isHR = currentUser?.role === UserRole.HR;
   
   const NO_PROJECT_ID = "NO_PROJECT";
+
+  // Derived state for tasks based on selected project
+  const selectedProjectTasks = useMemo(() => {
+    return projects.find(p => p.id === formData.projectId)?.tasks || [];
+  }, [formData.projectId, projects]);
+
+  const hasPredefinedTasks = selectedProjectTasks.length > 0;
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -103,7 +110,6 @@ const TimeLogs = () => {
   const currentMonthName = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   // --- Filtering ---
-  // Projects list: If HR show all, else show assigned
   const availableProjects = isHR ? projects : projects.filter(p => currentUser?.projectIds?.includes(p.id));
   
   const visibleEntries = useMemo(() => {
@@ -111,11 +117,9 @@ const TimeLogs = () => {
     
     // Filter by User 
     if (isHR) {
-       // Dropdown Filter
        if (filterUser !== 'All') {
           entries = entries.filter(e => e.userId === filterUser);
        }
-       // Text Search Filter
        if (searchEmployee) {
           const lowerQ = searchEmployee.toLowerCase();
           entries = entries.filter(e => {
@@ -127,17 +131,14 @@ const TimeLogs = () => {
        entries = entries.filter(e => e.userId === currentUser?.id);
     }
 
-    // Filter by Project
     if (filterProject !== 'All') {
         entries = entries.filter(e => e.projectId === filterProject);
     }
 
-    // Filter by Status
     if (filterStatus !== 'All') {
         entries = entries.filter(e => e.status === filterStatus);
     }
 
-    // Filter by Date Range
     if (dateRange === 'Month') {
         const startOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
         const endOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
@@ -146,10 +147,9 @@ const TimeLogs = () => {
             return d >= startOfMonth && d <= endOfMonth;
         });
     } else {
-        // Week Mode: Filter from Monday of the selected week to Sunday
         const startOfWeek = weekDays[0];
         const endOfWeek = new Date(weekDays[0]);
-        endOfWeek.setDate(startOfWeek.getDate() + 6); // Include weekend
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59);
 
         entries = entries.filter(e => {
@@ -183,7 +183,6 @@ const TimeLogs = () => {
         return d >= startOfWeek && d <= endOfWeekQuery;
      });
 
-     // Apply User Filter to Weekly Matrix too
      if (isHR) {
         if (filterUser !== 'All') relevantEntries = relevantEntries.filter(e => e.userId === filterUser);
         if (searchEmployee) {
@@ -207,7 +206,7 @@ const TimeLogs = () => {
 
         projEntries.forEach(e => {
             const d = new Date(e.date);
-            const dayIdx = d.getDay() - 1; // Mon=1 -> 0
+            const dayIdx = d.getDay() - 1; 
             if (dayIdx >= 0 && dayIdx < 5) {
                 dayTotals[dayIdx] += e.durationMinutes;
                 rowTotal += e.durationMinutes;
@@ -278,13 +277,11 @@ const TimeLogs = () => {
       const startTotal = startH * 60 + startM;
       const endTotal = endH * 60 + endM;
 
-      // Validation: End time must be after start time
       if (endTotal <= startTotal) {
-          return -1; // Flag for error
+          return -1; 
       }
 
-      let diff = endTotal - startTotal;
-      return diff;
+      return endTotal - startTotal;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -347,6 +344,14 @@ const TimeLogs = () => {
           description: entry.description,
           isBillable: entry.isBillable
       });
+      // Detect if the existing task is not in the project list to set isCustomTask correctly
+      const projTasks = projects.find(p => p.id === (entry.projectId || NO_PROJECT_ID))?.tasks || [];
+      if (projTasks.length > 0 && !projTasks.includes(entry.task)) {
+         setIsCustomTask(true);
+      } else {
+         setIsCustomTask(false);
+      }
+      
       setShowModal(true);
       setActiveMenuId(null);
   };
@@ -382,7 +387,7 @@ const TimeLogs = () => {
       });
       setIsCustomTask(false);
       setEntryMethod('duration');
-      setDurationInput({ hours: '0', minutes: '00' });
+      setDurationInput({ hours: '8', minutes: '00' });
       setRangeInput({
         startHour: '09', startMinute: '00', startPeriod: 'AM',
         endHour: '05', endMinute: '00', endPeriod: 'PM'
@@ -453,12 +458,8 @@ const TimeLogs = () => {
       notify("CSV file downloaded.");
   };
 
-  const selectedProjectTasks = projects.find(p => p.id === formData.projectId)?.tasks || [];
-  const hasPredefinedTasks = selectedProjectTasks.length > 0;
-
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-       
        {/* Delete Confirmation Modal */}
        {showDeleteConfirm && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200 print:hidden">
@@ -509,7 +510,6 @@ const TimeLogs = () => {
              </div>
           </div>
 
-          {/* Date Filtering Toggle (Prominent) */}
           <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 print:hidden">
               <button 
                 onClick={() => setDateRange('Week')} 
@@ -528,7 +528,6 @@ const TimeLogs = () => {
           </div>
           
           <div className="flex flex-wrap gap-2 w-full xl:w-auto print:hidden">
-            {/* HR Employee Search */}
             {isHR && (
                 <div className="relative">
                    <input 
@@ -606,7 +605,6 @@ const TimeLogs = () => {
                 <ChevronDown size={14} className="absolute right-2.5 top-3 text-gray-400 pointer-events-none" />
              </div>
 
-             {/* Date Navigator */}
              <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 p-1">
                 <button onClick={() => setViewDate(new Date(viewDate.setMonth(viewDate.getMonth() - 1)))} className="p-1 hover:bg-white hover:shadow-sm rounded transition text-gray-500"><ChevronDown size={16} className="rotate-90"/></button>
                 <span className="px-3 text-sm font-medium text-gray-700 min-w-[140px] text-center">{currentMonthName}</span>
@@ -619,7 +617,6 @@ const TimeLogs = () => {
           </div>
        </div>
 
-       {/* --- PROJECT SUMMARY (AGGREGATION) --- */}
        {Object.keys(projectSummaries).length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-fade-in print:hidden">
               <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
@@ -636,7 +633,6 @@ const TimeLogs = () => {
           </div>
        )}
 
-       {/* --- WEEKLY MATRIX VIEW (Only visible in 'Week' mode) --- */}
        {dateRange === 'Week' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in print:mb-6">
              <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between">
@@ -677,7 +673,6 @@ const TimeLogs = () => {
           </div>
        )}
 
-       {/* --- LIST VIEW --- */}
        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto min-h-[400px]">
              <table className="w-full text-left border-collapse">
@@ -742,7 +737,6 @@ const TimeLogs = () => {
                          </td>
                          <td className="px-6 py-4 text-right relative">
                             <div className="flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                               {/* Quick Approve for HR */}
                                {isHR && entry.status === 'Pending' && (
                                   <button onClick={() => handleApprove(entry)} className="p-1.5 text-green-600 hover:bg-green-100 rounded" title="Approve">
                                      <CheckCircle2 size={16} />
@@ -772,7 +766,6 @@ const TimeLogs = () => {
           </div>
        </div>
 
-       {/* Add/Edit Modal */}
        {showModal && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 print:hidden">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
@@ -780,7 +773,7 @@ const TimeLogs = () => {
                   <h3 className="text-xl font-bold text-gray-800">{editingId ? 'Edit Time Entry' : 'Log Time'}</h3>
                   <button onClick={() => setShowModal(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-500"><ChevronDown className="rotate-180" size={20}/></button>
                </div>
-
+               
                <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="grid grid-cols-2 gap-4">
                      <div>
@@ -799,7 +792,8 @@ const TimeLogs = () => {
                            className="w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                            value={formData.projectId}
                            onChange={e => {
-                              setFormData({...formData, projectId: e.target.value, task: ''}); // Reset task when project changes
+                              setFormData({...formData, projectId: e.target.value, task: ''});
+                              setIsCustomTask(false);
                            }}
                         >
                            <option value={NO_PROJECT_ID}>General (No Project)</option>
@@ -812,11 +806,10 @@ const TimeLogs = () => {
 
                   <div>
                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Task</label>
-                     {/* Toggle between Dropdown (if project has tasks) and Text Input */}
-                     {!isCustomTask && hasPredefinedTasks ? (
+                     {selectedProjectTasks.length > 0 && !isCustomTask ? (
                         <div className="flex gap-2">
                            <select 
-                              className="flex-1 border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                              className="w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                               value={formData.task}
                               onChange={e => setFormData({...formData, task: e.target.value})}
                               required
@@ -824,9 +817,7 @@ const TimeLogs = () => {
                               <option value="">Select Task...</option>
                               {selectedProjectTasks.map(t => <option key={t} value={t}>{t}</option>)}
                            </select>
-                           <button type="button" onClick={() => setIsCustomTask(true)} className="px-3 border rounded-lg hover:bg-gray-50 text-sm text-gray-600" title="Type custom task">
-                              <Edit2 size={16} />
-                           </button>
+                           <button type="button" onClick={() => setIsCustomTask(true)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500 whitespace-nowrap">Other</button>
                         </div>
                      ) : (
                         <div className="flex gap-2">
@@ -834,57 +825,48 @@ const TimeLogs = () => {
                               type="text" 
                               required 
                               placeholder="What are you working on?"
-                              className="flex-1 border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                              className="w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                               value={formData.task}
                               onChange={e => setFormData({...formData, task: e.target.value})}
                               autoFocus={isCustomTask}
                            />
-                           {hasPredefinedTasks && (
-                              <button type="button" onClick={() => setIsCustomTask(false)} className="px-3 border rounded-lg hover:bg-gray-50 text-sm text-gray-600" title="Select from list">
-                                 <Briefcase size={16} />
-                              </button>
+                           {selectedProjectTasks.length > 0 && (
+                              <button type="button" onClick={() => setIsCustomTask(false)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500 whitespace-nowrap">List</button>
                            )}
                         </div>
                      )}
                   </div>
 
-                  {/* Time Entry Method Toggle */}
                   <div className="bg-gray-50 p-1 rounded-lg flex text-sm mb-2 border border-gray-200">
                      <button type="button" onClick={() => setEntryMethod('duration')} className={`flex-1 py-1.5 rounded-md transition ${entryMethod === 'duration' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500'}`}>Duration</button>
                      <button type="button" onClick={() => setEntryMethod('range')} className={`flex-1 py-1.5 rounded-md transition ${entryMethod === 'range' ? 'bg-white shadow text-emerald-600 font-medium' : 'text-gray-500'}`}>Start / End Time</button>
                   </div>
 
                   {entryMethod === 'duration' ? (
-                     <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                        <div className="flex-1">
-                           <label className="block text-xs text-gray-500 mb-1">Hours</label>
-                           <div className="relative">
-                              <input 
-                                 type="number"
-                                 min="0"
-                                 max="12"
-                                 className="w-full bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-                                 value={durationInput.hours}
-                                 onChange={e => setDurationInput({...durationInput, hours: e.target.value})}
-                                 onBlur={e => setDurationInput({...durationInput, hours: validateHours(e.target.value, 0, 12)})}
-                              />
-                           </div>
+                     <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <div>
+                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Hours</label>
+                           <input 
+                              type="number"
+                              min="0"
+                              max="23"
+                              className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                              value={durationInput.hours}
+                              onChange={e => setDurationInput({...durationInput, hours: e.target.value})}
+                           />
                         </div>
-                        <span className="text-gray-400 font-bold mt-4">:</span>
-                        <div className="flex-1">
-                           <label className="block text-xs text-gray-500 mb-1">Minutes</label>
-                           <div className="relative">
-                              <input 
-                                 type="number"
-                                 step="15"
-                                 min="0"
-                                 max="59"
-                                 className="w-full bg-white border border-gray-300 rounded-lg p-2 text-center text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-                                 value={durationInput.minutes}
-                                 onChange={e => setDurationInput({...durationInput, minutes: e.target.value})}
-                                 onBlur={e => setDurationInput({...durationInput, minutes: validateMinutes(e.target.value)})}
-                              />
-                           </div>
+                        <div>
+                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Minutes</label>
+                           <select 
+                              className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                              value={durationInput.minutes}
+                              onChange={e => setDurationInput({...durationInput, minutes: e.target.value})}
+                           >
+                              <option value="00">00</option>
+                              <option value="15">15</option>
+                              <option value="30">30</option>
+                              <option value="45">45</option>
+                           </select>
                         </div>
                      </div>
                   ) : (
@@ -959,8 +941,8 @@ const TimeLogs = () => {
                        onChange={e => setFormData({...formData, isBillable: e.target.checked})}
                        className="rounded text-emerald-600 focus:ring-emerald-500"
                      />
-                     <label htmlFor="billable" className="text-sm text-gray-700 flex items-center gap-1">
-                        Billable <DollarSign size={12} className="text-gray-400"/>
+                     <label htmlFor="billable" className="text-sm text-gray-700 flex items-center gap-1 font-medium">
+                        Billable <DollarSign size={14} className="text-gray-400"/>
                      </label>
                   </div>
 

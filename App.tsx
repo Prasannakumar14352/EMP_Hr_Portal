@@ -11,6 +11,7 @@ import Profile from './Profile';
 import Directory from './Directory';
 import Organization from './Organization';
 import TimeLogs from './TimeLogs';
+import Attendance from './Attendance';
 
 // Auth Guard
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
@@ -25,6 +26,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/attendance" element={<RequireAuth><Attendance /></RequireAuth>} />
           <Route path="/time-logs" element={<RequireAuth><TimeLogs /></RequireAuth>} />
           <Route path="/leaves" element={<RequireAuth><Leaves /></RequireAuth>} />
           <Route path="/payslips" element={<RequireAuth><Payslips /></RequireAuth>} />

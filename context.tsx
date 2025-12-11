@@ -1,6 +1,6 @@
 import React, { useState, useContext, createContext } from 'react';
 import { 
-  User, UserRole, LeaveRequest, LeaveStatus, Payslip, Holiday, Notification, LeaveTypeConfig, Department, Project, TimeEntry
+  User, UserRole, LeaveRequest, LeaveStatus, Payslip, Holiday, Notification, LeaveTypeConfig, Department, Project, TimeEntry, AttendanceRecord
 } from './types';
 
 // --- Mock Data ---
@@ -110,6 +110,12 @@ interface AppContextType {
   updateLeaveType: (id: string, updates: Partial<LeaveTypeConfig>) => void;
   deleteLeaveType: (id: string) => void;
 
+  // Attendance
+  attendanceRecords: AttendanceRecord[];
+  checkIn: () => void;
+  checkOut: (reason?: string) => void;
+  getTodayAttendance: () => AttendanceRecord | undefined;
+
   // Others
   payslips: Payslip[];
   uploadPayslips: (newPayslips: Payslip[]) => void;
@@ -160,6 +166,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     { id: 'h2', name: 'Company Anniversary', date: '2024-08-15', type: 'Company', description: 'Celebrating 10 years of Nexus' },
     { id: 'h3', name: 'Christmas', date: '2024-12-25', type: 'Public', description: 'Christmas Day' }
   ]);
+  
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const login = (email: string): boolean => {
@@ -215,7 +223,6 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
   const deleteDepartment = (id: string) => {
     setDepartments(departments.filter(d => d.id !== id));
-    // Optional: Unlink users from this department
     notify('Department deleted.');
   };
 
@@ -252,6 +259,51 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     notify('Time entry deleted.');
   };
 
+  // Attendance Logic
+  const getTodayAttendance = () => {
+    if (!currentUser) return undefined;
+    const today = new Date().toISOString().split('T')[0];
+    return attendanceRecords.find(a => a.userId === currentUser.id && a.date === today);
+  };
+
+  const checkIn = () => {
+    if (!currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (getTodayAttendance()) {
+      notify("You are already checked in for today.");
+      return;
+    }
+    const newRecord: AttendanceRecord = {
+      id: `att-${Date.now()}`,
+      userId: currentUser.id,
+      date: today,
+      checkInTime: new Date().toISOString(),
+    };
+    setAttendanceRecords(prev => [...prev, newRecord]);
+    notify("Checked in successfully. Have a great day!");
+  };
+
+  const checkOut = (reason?: string) => {
+    if (!currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    const record = getTodayAttendance();
+    
+    if (!record) {
+      notify("You haven't checked in today.");
+      return;
+    }
+    
+    if (record.checkOutTime) {
+      notify("You have already checked out today.");
+      return;
+    }
+
+    setAttendanceRecords(prev => prev.map(a => 
+      (a.id === record.id) ? { ...a, checkOutTime: new Date().toISOString(), earlyLogoutReason: reason } : a
+    ));
+    notify("Checked out successfully. See you tomorrow!");
+  };
+
   // Leave Request Logic
   const addLeave = (req: Omit<LeaveRequest, 'id' | 'createdAt' | 'status' | 'userName' | 'userId'>) => {
     if (!currentUser) return;
@@ -277,8 +329,6 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const editLeave = (id: string, req: Partial<LeaveRequest>) => {
     setLeaves(prev => prev.map(l => {
       if (l.id === id) {
-        // Normally, editing might reset approval status. 
-        // We'll notify the manager that an edit occurred.
         return { ...l, ...req }; 
       } 
       return l;
@@ -294,19 +344,21 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const updateLeaveStatus = (id: string, status: LeaveStatus, comment?: string) => {
     setLeaves(prev => prev.map(l => {
       if (l.id !== id) return l;
+      
+      // Workflow logic notifications
       if (status === LeaveStatus.PENDING_HR) {
-        notify(`Leave approved by Manager. Forwarded to HR.`);
+        notify(`Manager approved request for ${l.userName}. Forwarded to HR for final approval.`);
         return { ...l, status, managerComment: comment };
       }
       if (status === LeaveStatus.APPROVED) {
-        notify(`Leave request finally approved for ${l.userName}. Email sent.`);
+        notify(`Leave request finally approved by HR for ${l.userName}.`);
         return { ...l, status, hrComment: comment };
       }
       if (status === LeaveStatus.REJECTED) {
          notify(`Leave request rejected for ${l.userName}.`);
          return { ...l, status, managerComment: comment || l.managerComment, hrComment: comment || l.hrComment };
       }
-      return l;
+      return { ...l, status };
     }));
   };
 
@@ -367,6 +419,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       timeEntries, addTimeEntry, updateTimeEntry, deleteTimeEntry,
       leaves, leaveTypes, addLeave, editLeave, addLeaves, updateLeaveStatus,
       addLeaveType, updateLeaveType, deleteLeaveType,
+      attendanceRecords, checkIn, checkOut, getTodayAttendance,
       payslips, uploadPayslips, 
       holidays, addHoliday, updateHoliday, addHolidays, deleteHoliday,
       notifications, markAllNotificationsRead,

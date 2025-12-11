@@ -119,3 +119,12 @@ export interface TimeEntry {
   status: 'Pending' | 'Approved';
   isBillable: boolean;
 }
+
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  checkInTime: string; // ISO String
+  checkOutTime?: string; // ISO String
+  earlyLogoutReason?: string;
+}

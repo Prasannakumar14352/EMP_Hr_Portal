@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from './context';
 import { UserRole, User, Department, Project } from './types';
-import { Briefcase, FolderPlus, Trash2, Building2, Users, Edit2, Layers, CheckCircle, Filter, Plus, X, ListTodo } from 'lucide-react';
+import { Briefcase, FolderPlus, Trash2, Building2, Users, Edit2, Layers, CheckCircle, Filter, Plus, X, ListTodo, GripVertical, Eye } from 'lucide-react';
 
 const Organization = () => {
   const { currentUser, departments, addDepartment, updateDepartment, deleteDepartment, projects, addProject, updateProject, deleteProject, users, updateUser, notify } = useAppContext();
@@ -21,6 +21,7 @@ const Organization = () => {
   
   // Task Management State (Local to modal)
   const [newTaskInput, setNewTaskInput] = useState('');
+  const [draggedTaskIndex, setDraggedTaskIndex] = useState<number | null>(null);
 
   // Allocation State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -32,6 +33,7 @@ const Organization = () => {
 
   const handleDeptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isHR) return; // Guard
     if (deptForm.id) {
        updateDepartment(deptForm.id, { name: deptForm.name, description: deptForm.description, managerId: deptForm.managerId });
     } else {
@@ -41,13 +43,14 @@ const Organization = () => {
     setDeptForm({ name: '', description: '', managerId: '' });
   };
 
-  const openDeptEdit = (dept: Department) => {
+  const openDeptView = (dept: Department) => {
     setDeptForm({ id: dept.id, name: dept.name, description: dept.description || '', managerId: dept.managerId || '' });
     setShowDeptModal(true);
   };
 
   const handleProjSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isHR) return; // Guard
     if (projForm.id) {
        updateProject(projForm.id, { name: projForm.name, description: projForm.description, status: projForm.status as any, tasks: projForm.tasks });
     } else {
@@ -58,7 +61,7 @@ const Organization = () => {
     setNewTaskInput('');
   };
 
-  const openProjEdit = (proj: Project) => {
+  const openProjView = (proj: Project) => {
     setProjForm({ id: proj.id, name: proj.name, description: proj.description || '', status: proj.status, tasks: proj.tasks || [] });
     setNewTaskInput('');
     setShowProjModal(true);
@@ -73,6 +76,29 @@ const Organization = () => {
 
   const removeTaskFromProject = (index: number) => {
     setProjForm(prev => ({ ...prev, tasks: prev.tasks.filter((_, i) => i !== index) }));
+  };
+
+  // Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedTaskIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault(); // Necessary to allow dropping
+    if (draggedTaskIndex === null || draggedTaskIndex === index) return;
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedTaskIndex === null) return;
+
+    const newTasks = [...projForm.tasks];
+    const [movedTask] = newTasks.splice(draggedTaskIndex, 1);
+    newTasks.splice(dropIndex, 0, movedTask);
+
+    setProjForm(prev => ({ ...prev, tasks: newTasks }));
+    setDraggedTaskIndex(null);
   };
 
   const openAllocation = (user: User) => {
@@ -220,21 +246,31 @@ const Organization = () => {
                  const manager = users.find(u => u.id === dept.managerId);
                  
                  return (
-                   <div key={dept.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition relative group">
+                   <div 
+                      key={dept.id} 
+                      onClick={() => openDeptView(dept)}
+                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition relative group cursor-pointer"
+                   >
                       <div className="flex justify-between items-start mb-4">
                          <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
                            <Building2 size={20} />
                          </div>
-                         {isHR && (
-                           <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                             <button onClick={() => openDeptEdit(dept)} className="text-gray-400 hover:text-emerald-600">
-                               <Edit2 size={16} />
-                             </button>
-                             <button onClick={() => { if(confirm('Delete department?')) deleteDepartment(dept.id); }} className="text-gray-400 hover:text-red-500">
-                               <Trash2 size={16} />
-                             </button>
-                           </div>
-                         )}
+                         <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                           {isHR ? (
+                             <>
+                                <button onClick={(e) => { e.stopPropagation(); openDeptView(dept); }} className="text-gray-400 hover:text-emerald-600">
+                                  <Edit2 size={16} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete department?')) deleteDepartment(dept.id); }} className="text-gray-400 hover:text-red-500">
+                                  <Trash2 size={16} />
+                                </button>
+                             </>
+                           ) : (
+                              <button className="text-gray-400 hover:text-emerald-600">
+                                <Eye size={16} />
+                              </button>
+                           )}
+                         </div>
                       </div>
                       <h4 className="text-xl font-bold text-gray-800 mb-1">{dept.name}</h4>
                       <p className="text-sm text-gray-500 mb-4 h-10 line-clamp-2">{dept.description}</p>
@@ -302,7 +338,11 @@ const Organization = () => {
                  const isAssignedToMe = currentUser?.projectIds?.includes(proj.id);
                  
                  return (
-                   <div key={proj.id} className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition relative group ${isAssignedToMe ? 'border-emerald-300 ring-1 ring-emerald-300' : 'border-gray-200'}`}>
+                   <div 
+                      key={proj.id} 
+                      onClick={() => openProjView(proj)}
+                      className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition relative group cursor-pointer ${isAssignedToMe ? 'border-emerald-300 ring-1 ring-emerald-300' : 'border-gray-200'}`}
+                   >
                       {isAssignedToMe && (
                         <span className="absolute top-0 right-0 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-bl-lg rounded-tr-lg">
                            Assigned to You
@@ -317,16 +357,22 @@ const Organization = () => {
                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${proj.status === 'Active' ? 'bg-green-100 text-green-700' : proj.status === 'On Hold' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
                              {proj.status}
                            </span>
-                           {isHR && (
-                              <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => openProjEdit(proj)} className="text-gray-400 hover:text-emerald-600">
-                                   <Edit2 size={16} />
-                                </button>
-                                <button onClick={() => { if(confirm('Delete project?')) deleteProject(proj.id); }} className="text-gray-400 hover:text-red-500">
-                                   <Trash2 size={16} />
-                                </button>
-                              </div>
-                           )}
+                           <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {isHR ? (
+                                <>
+                                  <button onClick={(e) => { e.stopPropagation(); openProjView(proj); }} className="text-gray-400 hover:text-emerald-600">
+                                     <Edit2 size={16} />
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete project?')) deleteProject(proj.id); }} className="text-gray-400 hover:text-red-500">
+                                     <Trash2 size={16} />
+                                  </button>
+                                </>
+                              ) : (
+                                  <button className="text-gray-400 hover:text-emerald-600">
+                                     <Eye size={16} />
+                                  </button>
+                              )}
+                           </div>
                          </div>
                       </div>
                       <h4 className="text-xl font-bold text-gray-800 mb-1">{proj.name}</h4>
@@ -429,20 +475,20 @@ const Organization = () => {
        {showDeptModal && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-             <h3 className="text-lg font-bold text-gray-800 mb-4">{deptForm.id ? 'Edit Department' : 'Create Department'}</h3>
+             <h3 className="text-lg font-bold text-gray-800 mb-4">{isHR ? (deptForm.id ? 'Edit Department' : 'Create Department') : 'Department Details'}</h3>
              <form onSubmit={handleDeptSubmit} className="space-y-4">
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
-                 <input required type="text" className="w-full border rounded-lg p-2 text-sm" value={deptForm.name} onChange={e => setDeptForm({...deptForm, name: e.target.value})} />
+                 <input disabled={!isHR} required type="text" className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600' : ''}`} value={deptForm.name} onChange={e => setDeptForm({...deptForm, name: e.target.value})} />
                </div>
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
-                 <textarea className="w-full border rounded-lg p-2 text-sm" value={deptForm.description} onChange={e => setDeptForm({...deptForm, description: e.target.value})} />
+                 <textarea disabled={!isHR} className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600' : ''}`} value={deptForm.description} onChange={e => setDeptForm({...deptForm, description: e.target.value})} />
                </div>
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Department Head (Manager)</label>
-                 <select className="w-full border rounded-lg p-2 text-sm" value={deptForm.managerId} onChange={e => setDeptForm({...deptForm, managerId: e.target.value})}>
-                    <option value="">Select Manager...</option>
+                 <select disabled={!isHR} className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600 appearance-none' : ''}`} value={deptForm.managerId} onChange={e => setDeptForm({...deptForm, managerId: e.target.value})}>
+                    <option value="">{isHR ? "Select Manager..." : "No Manager Assigned"}</option>
                     {users.map(u => (
                       <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                     ))}
@@ -462,33 +508,35 @@ const Organization = () => {
                                    <img src={u.avatar} className="w-6 h-6 rounded-full"/>
                                    <span className="text-sm text-gray-700">{u.name}</span>
                                 </div>
-                                <button type="button" onClick={() => removeUserFromDept(u.id)} className="text-gray-400 hover:text-red-500 p-1"><X size={14} /></button>
+                                {isHR && <button type="button" onClick={() => removeUserFromDept(u.id)} className="text-gray-400 hover:text-red-500 p-1"><X size={14} /></button>}
                              </div>
                           ))}
                           {employeesInCurrentDept.length === 0 && <span className="text-xs text-gray-400 italic">No members assigned</span>}
                        </div>
                        
                        {/* Add Member */}
-                       <div className="flex gap-2">
-                          <select 
-                            className="flex-1 text-sm border rounded-lg p-1.5"
-                            onChange={(e) => {
-                               if(e.target.value) { assignUserToDept(e.target.value); e.target.value = ''; }
-                            }}
-                          >
-                             <option value="">+ Add Employee...</option>
-                             {availableEmployeesForDept.map(u => (
-                                <option key={u.id} value={u.id}>{u.name}</option>
-                             ))}
-                          </select>
-                       </div>
+                       {isHR && (
+                         <div className="flex gap-2">
+                            <select 
+                              className="flex-1 text-sm border rounded-lg p-1.5"
+                              onChange={(e) => {
+                                 if(e.target.value) { assignUserToDept(e.target.value); e.target.value = ''; }
+                              }}
+                            >
+                               <option value="">+ Add Employee...</option>
+                               {availableEmployeesForDept.map(u => (
+                                  <option key={u.id} value={u.id}>{u.name}</option>
+                               ))}
+                            </select>
+                         </div>
+                       )}
                     </div>
                   </div>
                )}
 
                <div className="flex justify-end gap-2 pt-2">
-                 <button type="button" onClick={() => setShowDeptModal(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">Cancel</button>
-                 <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded text-sm">{deptForm.id ? 'Save Changes' : 'Create'}</button>
+                 <button type="button" onClick={() => setShowDeptModal(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">{isHR ? 'Cancel' : 'Close'}</button>
+                 {isHR && <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded text-sm">{deptForm.id ? 'Save Changes' : 'Create'}</button>}
                </div>
              </form>
            </div>
@@ -499,19 +547,19 @@ const Organization = () => {
        {showProjModal && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-             <h3 className="text-lg font-bold text-gray-800 mb-4">{projForm.id ? 'Edit Project' : 'Create Project'}</h3>
+             <h3 className="text-lg font-bold text-gray-800 mb-4">{isHR ? (projForm.id ? 'Edit Project' : 'Create Project') : 'Project Details'}</h3>
              <form onSubmit={handleProjSubmit} className="space-y-4">
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
-                 <input required type="text" className="w-full border rounded-lg p-2 text-sm" value={projForm.name} onChange={e => setProjForm({...projForm, name: e.target.value})} />
+                 <input disabled={!isHR} required type="text" className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600' : ''}`} value={projForm.name} onChange={e => setProjForm({...projForm, name: e.target.value})} />
                </div>
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
-                 <textarea className="w-full border rounded-lg p-2 text-sm" value={projForm.description} onChange={e => setProjForm({...projForm, description: e.target.value})} />
+                 <textarea disabled={!isHR} className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600' : ''}`} value={projForm.description} onChange={e => setProjForm({...projForm, description: e.target.value})} />
                </div>
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
-                 <select className="w-full border rounded-lg p-2 text-sm" value={projForm.status} onChange={e => setProjForm({...projForm, status: e.target.value})}>
+                 <select disabled={!isHR} className={`w-full border rounded-lg p-2 text-sm ${!isHR ? 'bg-gray-50 text-gray-600 appearance-none' : ''}`} value={projForm.status} onChange={e => setProjForm({...projForm, status: e.target.value})}>
                    <option value="Active">Active</option>
                    <option value="On Hold">On Hold</option>
                    <option value="Completed">Completed</option>
@@ -520,31 +568,43 @@ const Organization = () => {
 
                {/* Predefined Tasks Management */}
                <div className="pt-2 border-t border-gray-100">
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Predefined Tasks</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Predefined Tasks {isHR && "(Drag to reorder)"}</label>
                   <div className="bg-gray-50 rounded-lg p-3">
-                     <div className="flex gap-2 mb-3">
-                        <input 
-                           type="text" 
-                           placeholder="Add task name..." 
-                           className="flex-1 border rounded-lg p-2 text-sm"
-                           value={newTaskInput}
-                           onChange={e => setNewTaskInput(e.target.value)}
-                           onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTaskToProject())}
-                        />
-                        <button type="button" onClick={addTaskToProject} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700">
-                           <Plus size={16} />
-                        </button>
-                     </div>
+                     {isHR && (
+                       <div className="flex gap-2 mb-3">
+                          <input 
+                             type="text" 
+                             placeholder="Add task name..." 
+                             className="flex-1 border rounded-lg p-2 text-sm"
+                             value={newTaskInput}
+                             onChange={e => setNewTaskInput(e.target.value)}
+                             onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTaskToProject())}
+                          />
+                          <button type="button" onClick={addTaskToProject} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700">
+                             <Plus size={16} />
+                          </button>
+                       </div>
+                     )}
                      <div className="space-y-2 max-h-40 overflow-y-auto">
                         {projForm.tasks.map((task, idx) => (
-                           <div key={idx} className="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                           <div 
+                              key={idx} 
+                              draggable={isHR}
+                              onDragStart={(e) => isHR && handleDragStart(e, idx)}
+                              onDragOver={(e) => isHR && handleDragOver(e, idx)}
+                              onDrop={(e) => isHR && handleDrop(e, idx)}
+                              className={`flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100 ${isHR ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                           >
                               <div className="flex items-center gap-2">
+                                 {isHR && <GripVertical size={14} className="text-gray-300" />}
                                  <ListTodo size={14} className="text-gray-400" />
                                  <span className="text-sm text-gray-700">{task}</span>
                               </div>
-                              <button type="button" onClick={() => removeTaskFromProject(idx)} className="text-gray-400 hover:text-red-500 p-1">
-                                 <X size={14} />
-                              </button>
+                              {isHR && (
+                                <button type="button" onClick={() => removeTaskFromProject(idx)} className="text-gray-400 hover:text-red-500 p-1">
+                                   <X size={14} />
+                                </button>
+                              )}
                            </div>
                         ))}
                         {projForm.tasks.length === 0 && <span className="text-xs text-gray-400 italic">No tasks defined.</span>}
@@ -565,33 +625,35 @@ const Organization = () => {
                                    <img src={u.avatar} className="w-6 h-6 rounded-full"/>
                                    <span className="text-sm text-gray-700">{u.name}</span>
                                 </div>
-                                <button type="button" onClick={() => removeUserFromProj(u.id)} className="text-gray-400 hover:text-red-500 p-1"><X size={14} /></button>
+                                {isHR && <button type="button" onClick={() => removeUserFromProj(u.id)} className="text-gray-400 hover:text-red-500 p-1"><X size={14} /></button>}
                              </div>
                           ))}
                           {employeesInCurrentProj.length === 0 && <span className="text-xs text-gray-400 italic">No team members assigned</span>}
                        </div>
                        
                        {/* Add Member */}
-                       <div className="flex gap-2">
-                          <select 
-                            className="flex-1 text-sm border rounded-lg p-1.5"
-                            onChange={(e) => {
-                               if(e.target.value) { assignUserToProj(e.target.value); e.target.value = ''; }
-                            }}
-                          >
-                             <option value="">+ Add Team Member...</option>
-                             {availableEmployeesForProj.map(u => (
-                                <option key={u.id} value={u.id}>{u.name}</option>
-                             ))}
-                          </select>
-                       </div>
+                       {isHR && (
+                         <div className="flex gap-2">
+                            <select 
+                              className="flex-1 text-sm border rounded-lg p-1.5"
+                              onChange={(e) => {
+                                 if(e.target.value) { assignUserToProj(e.target.value); e.target.value = ''; }
+                              }}
+                            >
+                               <option value="">+ Add Team Member...</option>
+                               {availableEmployeesForProj.map(u => (
+                                  <option key={u.id} value={u.id}>{u.name}</option>
+                               ))}
+                            </select>
+                         </div>
+                       )}
                     </div>
                   </div>
                )}
 
                <div className="flex justify-end gap-2 pt-2">
-                 <button type="button" onClick={() => setShowProjModal(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">Cancel</button>
-                 <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded text-sm">{projForm.id ? 'Save Changes' : 'Create'}</button>
+                 <button type="button" onClick={() => setShowProjModal(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded text-sm">{isHR ? 'Cancel' : 'Close'}</button>
+                 {isHR && <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded text-sm">{projForm.id ? 'Save Changes' : 'Create'}</button>}
                </div>
              </form>
            </div>
