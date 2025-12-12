@@ -1,82 +1,15 @@
-import React, { useState, useContext, createContext } from 'react';
+import React, { useState, useContext, createContext, useEffect } from 'react';
+import { useMsal } from "@azure/msal-react";
+import { api } from './services/api';
 import { 
   User, UserRole, LeaveRequest, LeaveStatus, Payslip, Holiday, Notification, LeaveTypeConfig, Department, Project, TimeEntry, AttendanceRecord
 } from './types';
 
-// --- Mock Data ---
-
-const MOCK_DEPARTMENTS: Department[] = [
-  { id: 'd1', name: 'Engineering', description: 'Software Development and IT', managerId: 'u2' },
-  { id: 'd2', name: 'Human Resources', description: 'People and Culture', managerId: 'u3' },
-  { id: 'd3', name: 'Product', description: 'Product Management and Design', managerId: 'u5' },
-  { id: 'd4', name: 'Executive', description: 'C-Level Management', managerId: 'u5' },
-];
-
-const MOCK_PROJECTS: Project[] = [
-  { 
-    id: 'pj1', name: 'Website Revamp', description: 'Modernizing the corporate portal', status: 'Active', dueDate: '2024-12-31',
-    tasks: ['Development', 'Design', 'Testing', 'Planning', 'Deployment']
-  },
-  { 
-    id: 'pj2', name: 'Mobile App V2', description: 'Adding biometric login', status: 'Active', dueDate: '2024-09-30',
-    tasks: ['Frontend', 'Backend API', 'UX Research', 'QA']
-  },
-  { 
-    id: 'pj3', name: 'Q3 Recruitment', description: 'Hiring for sales team', status: 'Completed',
-    tasks: ['Sourcing', 'Interviews', 'Onboarding', 'Documentation']
-  },
-];
-
-export const MOCK_USERS: User[] = [
-  { 
-    id: 'u1', name: 'Alice Employee', email: 'alice@nexus.com', role: UserRole.EMPLOYEE, 
-    avatar: 'https://picsum.photos/id/1011/200/200', managerId: 'u2', phone: '+1 555-0101', 
-    departmentId: 'd1', projectIds: ['pj1', 'pj2'],
-    location: { latitude: 34.0522, longitude: -118.2437, address: 'Los Angeles, CA' },
-    jobTitle: 'Senior Frontend Developer', hireDate: '2022-03-15'
-  },
-  { 
-    id: 'u2', name: 'Bob Manager', email: 'bob@nexus.com', role: UserRole.MANAGER, 
-    avatar: 'https://picsum.photos/id/1012/200/200', managerId: 'u3', phone: '+1 555-0102', 
-    departmentId: 'd1', projectIds: ['pj1'],
-    location: { latitude: 40.7128, longitude: -74.0060, address: 'New York, NY' },
-    jobTitle: 'Engineering Manager', hireDate: '2020-06-01' 
-  },
-  { 
-    id: 'u3', name: 'Charlie HR', email: 'charlie@nexus.com', role: UserRole.HR, 
-    avatar: 'https://picsum.photos/id/1013/200/200', phone: '+1 555-0103', 
-    departmentId: 'd2', projectIds: ['pj3'],
-    location: { latitude: 51.5074, longitude: -0.1278, address: 'London, UK' },
-    jobTitle: 'HR Director', hireDate: '2019-01-10'
-  },
-  { 
-    id: 'u4', name: 'David Dev', email: 'david@nexus.com', role: UserRole.EMPLOYEE, 
-    avatar: 'https://picsum.photos/id/1014/200/200', managerId: 'u2', phone: '+1 555-0104', 
-    departmentId: 'd3', projectIds: ['pj2'],
-    location: { latitude: 37.7749, longitude: -122.4194, address: 'San Francisco, CA' },
-    jobTitle: 'Product Owner', hireDate: '2023-01-20'
-  },
-  { 
-    id: 'u5', name: 'Eve Exec', email: 'eve@nexus.com', role: UserRole.MANAGER, 
-    avatar: 'https://picsum.photos/id/1015/200/200', phone: '+1 555-0105', 
-    departmentId: 'd4', projectIds: [],
-    location: { latitude: 48.8566, longitude: 2.3522, address: 'Paris, France' },
-    jobTitle: 'VP of Operations', hireDate: '2018-11-05'
-  },
-];
-
-const INITIAL_LEAVE_TYPES: LeaveTypeConfig[] = [
-  { id: 'lt1', name: 'Annual Leave', days: 20, description: 'Standard annual vacation leave', isActive: true, color: 'text-emerald-600' },
-  { id: 'lt2', name: 'Compassionate Leave', days: 5, description: 'Leave for family emergencies and bereavement', isActive: true, color: 'text-teal-600' },
-  { id: 'lt3', name: 'Loss of Pay', days: 10, description: 'Unpaid leave for personal reasons', isActive: true, color: 'text-rose-600' },
-  { id: 'lt4', name: 'Paternity Leave', days: 15, description: 'Leave for new fathers', isActive: true, color: 'text-blue-600' },
-  { id: 'lt5', name: 'Sick Leave', days: 12, description: 'Medical and health-related leave', isActive: true, color: 'text-amber-600' },
-];
-
 interface AppContextType {
   users: User[];
   currentUser: User | null;
-  login: (email: string) => boolean;
+  isLoading: boolean;
+  login: (email: string) => Promise<boolean>; // Updated signature
   logout: () => void;
   updateUser: (id: string, data: Partial<User>) => void;
   
@@ -114,6 +47,8 @@ interface AppContextType {
   attendanceRecords: AttendanceRecord[];
   checkIn: () => void;
   checkOut: (reason?: string) => void;
+  updateAttendanceRecord: (id: string, data: Partial<AttendanceRecord>) => void;
+  addManualAttendance: (data: Omit<AttendanceRecord, 'id'>) => void;
   getTodayAttendance: () => AttendanceRecord | undefined;
 
   // Others
@@ -138,85 +73,123 @@ export const useAppContext = () => {
 };
 
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
+  const { instance, accounts } = useMsal();
+  
+  // State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const [departments, setDepartments] = useState<Department[]>(MOCK_DEPARTMENTS);
-  const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
-  
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([
-    { id: 'te1', userId: 'u1', projectId: 'pj1', task: 'Development', date: new Date().toISOString().split('T')[0], durationMinutes: 480, description: 'Working on login page', status: 'Pending', isBillable: true },
-    { id: 'te2', userId: 'u1', projectId: 'pj2', task: 'Design', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], durationMinutes: 240, description: 'Mockups for new feature', status: 'Approved', isBillable: true },
-  ]);
-
-  // Mock Database
-  const [leaves, setLeaves] = useState<LeaveRequest[]>([
-    { id: 'l1', userId: 'u1', userName: 'Alice Employee', type: 'Annual Leave', startDate: '2024-06-10', endDate: '2024-06-15', reason: 'Family vacation', status: LeaveStatus.PENDING_MANAGER, createdAt: '2024-05-20' },
-    { id: 'l2', userId: 'u1', userName: 'Alice Employee', type: 'Sick Leave', startDate: '2024-05-01', endDate: '2024-05-02', reason: 'Flu', status: LeaveStatus.APPROVED, managerComment: 'Get well soon', hrComment: 'Approved', createdAt: '2024-05-01' }
-  ]);
-  
-  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeConfig[]>(INITIAL_LEAVE_TYPES);
-
-  const [payslips, setPayslips] = useState<Payslip[]>([
-    { id: 'p1', userId: 'u1', month: 'April', year: 2024, amount: 4500, pdfUrl: '#', uploadedAt: '2024-04-25' },
-    { id: 'p2', userId: 'u2', month: 'April', year: 2024, amount: 5500, pdfUrl: '#', uploadedAt: '2024-04-25' }
-  ]);
-  const [holidays, setHolidays] = useState<Holiday[]>([
-    { id: 'h1', name: 'New Year', date: '2024-01-01', type: 'Public', description: 'Celebration of the new year' },
-    { id: 'h2', name: 'Company Anniversary', date: '2024-08-15', type: 'Company', description: 'Celebrating 10 years of Nexus' },
-    { id: 'h3', name: 'Christmas', date: '2024-12-25', type: 'Public', description: 'Christmas Day' }
-  ]);
-  
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeConfig[]>([]);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const login = (email: string): boolean => {
-    const user = allUsers.find(u => u.email === email);
+  // Initial Data Load (Auth dependent)
+  useEffect(() => {
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            // If MSAL authenticated
+            const activeAccount = instance.getActiveAccount();
+            if (activeAccount && activeAccount.username) {
+                const user = await api.fetchUserByEmail(activeAccount.username);
+                // Fallback for demo: If user not found in mock DB but logged in via MSAL, use Alice
+                // In real app, you would create the user or show error
+                if (user) {
+                    setCurrentUser(user);
+                    notify(`Welcome back, ${user.name}`);
+                } else {
+                    // Demo fallback if email doesn't match mock users
+                    const demoUser = await api.fetchUserByEmail('alice@nexus.com');
+                    if (demoUser) {
+                        setCurrentUser({ ...demoUser, email: activeAccount.username, name: activeAccount.name || demoUser.name });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Auth Load Error", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    loadData();
+  }, [instance, accounts]);
+
+  // Load App Data when user is logged in
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const fetchData = async () => {
+        const [u, d, p, t, l, lt, a, h, pay] = await Promise.all([
+            api.fetchAllUsers(),
+            api.fetchDepartments(),
+            api.fetchProjects(),
+            api.fetchTimeEntries(),
+            api.fetchLeaves(),
+            api.fetchLeaveTypes(),
+            api.fetchAttendance(),
+            api.fetchHolidays(),
+            api.fetchPayslips()
+        ]);
+        
+        setAllUsers(u);
+        setDepartments(d);
+        setProjects(p);
+        setTimeEntries(t);
+        setLeaves(l);
+        setLeaveTypes(lt);
+        setAttendanceRecords(a);
+        setHolidays(h);
+        setPayslips(pay);
+    };
+
+    fetchData();
+  }, [currentUser]);
+
+  // Auth Actions
+  const login = async (email: string): Promise<boolean> => {
+    // For legacy/demo login bypassing MSAL (Dev Mode)
+    const user = await api.fetchUserByEmail(email);
     if (user) {
       setCurrentUser(user);
-      notify(`Welcome back, ${user.name}`);
       return true;
-    } else {
-      notify("User not found (Try alice@nexus.com)");
-      return false;
     }
+    return false;
   };
 
-  const logout = () => setCurrentUser(null);
-
-  const updateUser = (id: string, data: Partial<User>) => {
-    setAllUsers(prev => prev.map(u => {
-      if (u.id === id) {
-        const updatedUser = { ...u, ...data };
-        // Sync department name if departmentId changed (legacy support)
-        if (data.departmentId) {
-          const dept = departments.find(d => d.id === data.departmentId);
-          if (dept) updatedUser.department = dept.name;
-        }
-
-        // If updating current user, update session too
-        if (currentUser && currentUser.id === id) {
-          setCurrentUser(updatedUser);
-        }
-        return updatedUser;
-      }
-      return u;
-    }));
-    notify("User profile updated.");
+  const logout = () => {
+    instance.logoutPopup();
+    setCurrentUser(null);
   };
 
   const notify = (msg: string) => {
     setNotifications(prev => [{ id: Date.now().toString(), message: msg, type: 'info', read: false, createdAt: new Date().toISOString() }, ...prev]);
   };
 
-  // Organization Logic
-  const addDepartment = (dept: Omit<Department, 'id'>) => {
-    const newDept = { ...dept, id: `d-${Date.now()}` };
+  // --- Data Actions (Async Wrappers) ---
+
+  const updateUser = async (id: string, data: Partial<User>) => {
+    const updated = await api.updateUser(id, data);
+    setAllUsers(prev => prev.map(u => u.id === id ? updated : u));
+    if (currentUser?.id === id) setCurrentUser(updated);
+    notify("User profile updated.");
+  };
+
+  const addDepartment = async (dept: Omit<Department, 'id'>) => {
+    const newDept = await api.createDepartment(dept);
     setDepartments([...departments, newDept]);
     notify(`Department "${dept.name}" created.`);
   };
 
   const updateDepartment = (id: string, data: Partial<Department>) => {
+    // Implementation for real API update would go here
     setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
     notify("Department updated.");
   };
@@ -227,6 +200,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const addProject = (proj: Omit<Project, 'id'>) => {
+    // Mock impl for brevity in context, ideally move to api.createProject
     const newProj = { ...proj, id: `pj-${Date.now()}` };
     setProjects([...projects, newProj]);
     notify(`Project "${proj.name}" created.`);
@@ -242,11 +216,10 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     notify('Project deleted.');
   };
 
-  // Time Logs Logic
-  const addTimeEntry = (entry: Omit<TimeEntry, 'id'>) => {
-    const newEntry = { ...entry, id: `te-${Date.now()}` };
+  const addTimeEntry = async (entry: Omit<TimeEntry, 'id'>) => {
+    const newEntry = await api.createTimeEntry(entry);
     setTimeEntries(prev => [newEntry, ...prev]);
-    notify(`Time logged for project.`);
+    notify(`Time logged.`);
   };
 
   const updateTimeEntry = (id: string, entry: Partial<TimeEntry>) => {
@@ -254,132 +227,105 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     notify("Time entry updated.");
   };
 
-  const deleteTimeEntry = (id: string) => {
+  const deleteTimeEntry = async (id: string) => {
+    await api.deleteTimeEntry(id);
     setTimeEntries(prev => prev.filter(t => t.id !== id));
     notify('Time entry deleted.');
   };
 
-  // Attendance Logic
+  // Attendance
   const getTodayAttendance = () => {
     if (!currentUser) return undefined;
     const today = new Date().toISOString().split('T')[0];
     return attendanceRecords.find(a => a.userId === currentUser.id && a.date === today);
   };
 
-  const checkIn = () => {
+  const checkIn = async () => {
     if (!currentUser) return;
     const today = new Date().toISOString().split('T')[0];
-    if (getTodayAttendance()) {
-      notify("You are already checked in for today.");
-      return;
-    }
-    const newRecord: AttendanceRecord = {
-      id: `att-${Date.now()}`,
+    if (getTodayAttendance()) return;
+    
+    const newRecord = await api.createAttendance({
       userId: currentUser.id,
       date: today,
       checkInTime: new Date().toISOString(),
-    };
+    });
     setAttendanceRecords(prev => [...prev, newRecord]);
-    notify("Checked in successfully. Have a great day!");
+    notify("Checked in successfully.");
   };
 
-  const checkOut = (reason?: string) => {
+  const checkOut = async (reason?: string) => {
     if (!currentUser) return;
-    const today = new Date().toISOString().split('T')[0];
     const record = getTodayAttendance();
-    
-    if (!record) {
-      notify("You haven't checked in today.");
-      return;
-    }
-    
-    if (record.checkOutTime) {
-      notify("You have already checked out today.");
-      return;
-    }
+    if (!record || record.checkOutTime) return;
 
+    await api.updateAttendance(record.id, { checkOutTime: new Date().toISOString(), earlyLogoutReason: reason });
     setAttendanceRecords(prev => prev.map(a => 
       (a.id === record.id) ? { ...a, checkOutTime: new Date().toISOString(), earlyLogoutReason: reason } : a
     ));
-    notify("Checked out successfully. See you tomorrow!");
+    notify("Checked out successfully.");
   };
 
-  // Leave Request Logic
-  const addLeave = (req: Omit<LeaveRequest, 'id' | 'createdAt' | 'status' | 'userName' | 'userId'>) => {
+  const updateAttendanceRecord = async (id: string, data: Partial<AttendanceRecord>) => {
+    await api.updateAttendance(id, data);
+    setAttendanceRecords(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    notify("Attendance updated.");
+  };
+
+  const addManualAttendance = async (data: Omit<AttendanceRecord, 'id'>) => {
+    const newRecord = await api.createAttendance(data);
+    setAttendanceRecords(prev => [newRecord, ...prev]);
+    notify("Attendance added manually.");
+  };
+
+  // Leaves
+  const addLeave = async (req: Omit<LeaveRequest, 'id' | 'createdAt' | 'status' | 'userName' | 'userId'>) => {
     if (!currentUser) return;
-    const newLeave: LeaveRequest = {
+    const payload = {
       ...req,
-      id: `l-${Date.now()}`,
       userId: currentUser.id,
       userName: currentUser.name,
       status: LeaveStatus.PENDING_MANAGER,
       createdAt: new Date().toISOString()
     };
+    const newLeave = await api.createLeave(payload);
     setLeaves([...leaves, newLeave]);
-    
-    // Notify logic
-    const recipientNames = req.notifyUserIds 
-      ? allUsers.filter(u => req.notifyUserIds?.includes(u.id)).map(u => u.name).join(', ')
-      : 'Manager';
-    
-    const urgencyPrefix = req.isUrgent ? '[URGENT] ' : '';
-    notify(`${urgencyPrefix}Leave request sent. Notified: ${recipientNames}`);
+    notify("Leave request sent.");
   };
 
-  const editLeave = (id: string, req: Partial<LeaveRequest>) => {
-    setLeaves(prev => prev.map(l => {
-      if (l.id === id) {
-        return { ...l, ...req }; 
-      } 
-      return l;
-    }));
-    notify("Leave request updated. Manager notified of changes.");
+  const editLeave = async (id: string, req: Partial<LeaveRequest>) => {
+    const updated = await api.updateLeave(id, req);
+    setLeaves(prev => prev.map(l => l.id === id ? updated : l));
+    notify("Leave request updated.");
   };
 
   const addLeaves = (newLeaves: LeaveRequest[]) => {
     setLeaves(prev => [...prev, ...newLeaves]);
-    notify(`Imported ${newLeaves.length} leave records via bulk upload.`);
+    notify(`Imported ${newLeaves.length} leaves.`);
   };
 
-  const updateLeaveStatus = (id: string, status: LeaveStatus, comment?: string) => {
-    setLeaves(prev => prev.map(l => {
-      if (l.id !== id) return l;
-      
-      // Workflow logic notifications
-      if (status === LeaveStatus.PENDING_HR) {
-        notify(`Manager approved request for ${l.userName}. Forwarded to HR for final approval.`);
-        return { ...l, status, managerComment: comment };
-      }
-      if (status === LeaveStatus.APPROVED) {
-        notify(`Leave request finally approved by HR for ${l.userName}.`);
-        return { ...l, status, hrComment: comment };
-      }
-      if (status === LeaveStatus.REJECTED) {
-         notify(`Leave request rejected for ${l.userName}.`);
-         return { ...l, status, managerComment: comment || l.managerComment, hrComment: comment || l.hrComment };
-      }
-      return { ...l, status };
-    }));
+  const updateLeaveStatus = async (id: string, status: LeaveStatus, comment?: string) => {
+    const update = { status, ...(status === LeaveStatus.PENDING_HR || status === LeaveStatus.REJECTED ? { managerComment: comment } : { hrComment: comment }) };
+    await api.updateLeave(id, update);
+    setLeaves(prev => prev.map(l => l.id === id ? { ...l, ...update } : l));
+    notify(`Leave status updated to ${status}.`);
   };
 
-  // Leave Type Management Logic
+  // Leave Types
   const addLeaveType = (type: Omit<LeaveTypeConfig, 'id'>) => {
     const newType = { ...type, id: `lt-${Date.now()}` };
     setLeaveTypes([...leaveTypes, newType]);
-    notify(`Leave Type "${type.name}" created.`);
   };
 
   const updateLeaveType = (id: string, updates: Partial<LeaveTypeConfig>) => {
     setLeaveTypes(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-    notify(`Leave Type updated.`);
   };
 
   const deleteLeaveType = (id: string) => {
     setLeaveTypes(prev => prev.filter(t => t.id !== id));
-    notify(`Leave Type deleted.`);
   };
 
-  // Other Logic
+  // Others
   const uploadPayslips = (newSlips: Payslip[]) => {
     setPayslips([...payslips, ...newSlips]);
     notify(`Uploaded ${newSlips.length} payslips.`);
@@ -388,22 +334,19 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const addHoliday = (holiday: Omit<Holiday, 'id'>) => {
     const newHoliday = { ...holiday, id: `h-${Date.now()}` };
     setHolidays(prev => [...prev, newHoliday]);
-    notify(`Holiday "${holiday.name}" added.`);
+    notify("Holiday added.");
   };
 
   const updateHoliday = (id: string, updates: Partial<Holiday>) => {
     setHolidays(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h));
-    notify("Holiday updated.");
   };
 
   const addHolidays = (newHolidays: Holiday[]) => {
     setHolidays(prev => [...prev, ...newHolidays]);
-    notify(`Added ${newHolidays.length} new holidays.`);
   };
 
   const deleteHoliday = (id: string) => {
     setHolidays(prev => prev.filter(h => h.id !== id));
-    notify("Holiday removed.");
   };
 
   const markAllNotificationsRead = () => {
@@ -413,13 +356,13 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <AppContext.Provider value={{
       users: allUsers,
-      currentUser, login, logout, updateUser,
+      currentUser, login, logout, updateUser, isLoading,
       departments, addDepartment, updateDepartment, deleteDepartment,
       projects, addProject, updateProject, deleteProject,
       timeEntries, addTimeEntry, updateTimeEntry, deleteTimeEntry,
       leaves, leaveTypes, addLeave, editLeave, addLeaves, updateLeaveStatus,
       addLeaveType, updateLeaveType, deleteLeaveType,
-      attendanceRecords, checkIn, checkOut, getTodayAttendance,
+      attendanceRecords, checkIn, checkOut, getTodayAttendance, updateAttendanceRecord, addManualAttendance,
       payslips, uploadPayslips, 
       holidays, addHoliday, updateHoliday, addHolidays, deleteHoliday,
       notifications, markAllNotificationsRead,
