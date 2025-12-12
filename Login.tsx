@@ -1,50 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppContext } from './context';
-import { useMsal } from "@azure/msal-react";
-import { loginRequest } from './services/authConfig';
+import { useAppContext, MOCK_USERS } from './context';
 import { UserRole } from './types';
 
 const Login = () => {
-  const { login, currentUser, isLoading } = useAppContext();
-  const { instance } = useMsal();
+  const { login, currentUser } = useAppContext();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
-  
-  // If already logged in, redirect
+  const [step, setStep] = useState(1);
+
+  // Redirect if already logged in
   useEffect(() => {
     if (currentUser) {
       navigate('/');
     }
   }, [currentUser, navigate]);
 
-  const handleMicrosoftLogin = () => {
-    instance.loginPopup(loginRequest).catch(e => {
-        console.error(e);
-    });
+  const handleNext = () => {
+    if (email) setStep(2);
   };
 
-  // Legacy/Dev Login Handler
-  const handleDevLogin = async () => {
-     if (email) {
-        const success = await login(email);
-        if (success) navigate('/');
-        else alert("User not found in mock DB");
-     }
+  const handleLogin = () => {
+    const success = login(email);
+    if (success) navigate('/');
   };
 
-  const demoLogin = async (role: UserRole) => {
-     // Quick helper for development
-     const emails: Record<UserRole, string> = {
-         [UserRole.EMPLOYEE]: 'alice@nexus.com',
-         [UserRole.MANAGER]: 'bob@nexus.com',
-         [UserRole.HR]: 'charlie@nexus.com'
-     };
-     await login(emails[role]);
-     navigate('/');
+  const demoLogin = (role: UserRole) => {
+    const user = MOCK_USERS.find(u => u.role === role);
+    if (user) {
+        login(user.email);
+        navigate('/');
+    }
   };
-
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100" style={{
@@ -62,32 +49,61 @@ const Login = () => {
              </div>
              <span className="text-xl font-semibold text-gray-600">Microsoft</span>
            </div>
-           <h2 className="text-2xl font-semibold text-gray-800 mt-4">Sign in</h2>
-           <p className="text-sm text-gray-500 mt-1">Use your organizational account</p>
+           <h2 className="text-2xl font-semibold text-gray-800 mt-4">{step === 1 ? 'Sign in' : 'Enter password'}</h2>
+           {step === 2 && (
+             <button onClick={() => setStep(1)} className="flex items-center space-x-2 mt-2 p-1 -ml-1 hover:bg-gray-100 rounded text-sm text-gray-800">
+               <span className="border rounded-full px-1 border-gray-600">←</span> 
+               <span>{email}</span>
+             </button>
+           )}
         </div>
 
-        <button 
-            onClick={handleMicrosoftLogin}
-            className="w-full bg-emerald-600 text-white py-2.5 rounded hover:bg-emerald-700 transition shadow-sm font-medium flex items-center justify-center gap-2"
-        >
-            Sign in with Microsoft
-        </button>
+        {step === 1 ? (
+          <>
+            <input 
+              type="email" 
+              placeholder="Email, phone, or Skype"
+              className="w-full border-b border-gray-600 focus:border-emerald-600 outline-none py-2 text-base mb-6 bg-transparent transition-colors"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <p className="text-sm text-gray-600 mb-8">No account? <a href="#" className="text-emerald-600 hover:underline">Create one!</a></p>
+            <div className="flex justify-end">
+              <button 
+                onClick={handleNext}
+                className="bg-emerald-600 text-white px-8 py-2 min-w-[100px] hover:bg-emerald-700 transition-colors shadow-sm"
+              >
+                Next
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+             <input 
+              type="password" 
+              placeholder="Password"
+              className="w-full border-b border-gray-600 focus:border-emerald-600 outline-none py-2 text-base mb-6 bg-transparent transition-colors"
+            />
+            <div className="flex justify-between items-center mb-8">
+              <a href="#" className="text-sm text-emerald-600 hover:underline">Forgot password?</a>
+            </div>
+             <div className="flex justify-end">
+              <button 
+                onClick={handleLogin}
+                className="bg-emerald-600 text-white px-8 py-2 min-w-[100px] hover:bg-emerald-700 transition-colors shadow-sm"
+              >
+                Sign in
+              </button>
+            </div>
+          </>
+        )}
 
         <div className="mt-12 pt-6 border-t border-gray-200">
-          <p className="text-xs text-gray-500 mb-4 uppercase tracking-wider text-center">Development Mode: Manual Override</p>
-          <input 
-             type="email" 
-             placeholder="Dev Email (e.g. alice@nexus.com)"
-             className="w-full border-b border-gray-300 text-sm py-2 mb-3 outline-none focus:border-emerald-600"
-             value={email}
-             onChange={e => setEmail(e.target.value)}
-          />
-          <button onClick={handleDevLogin} className="w-full text-xs py-2 bg-gray-100 hover:bg-gray-200 rounded mb-4">Dev Sign In</button>
-          
+          <p className="text-xs text-gray-500 mb-4 uppercase tracking-wider text-center">Development Mode: Quick Login</p>
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => demoLogin(UserRole.EMPLOYEE)} className="text-xs py-2 bg-gray-50 hover:bg-emerald-50 text-emerald-700 rounded border border-emerald-100">Employee</button>
-            <button onClick={() => demoLogin(UserRole.MANAGER)} className="text-xs py-2 bg-gray-50 hover:bg-emerald-50 text-emerald-700 rounded border border-emerald-100">Manager</button>
-            <button onClick={() => demoLogin(UserRole.HR)} className="text-xs py-2 bg-gray-50 hover:bg-emerald-50 text-emerald-700 rounded border border-emerald-100">HR</button>
+            <button onClick={() => demoLogin(UserRole.EMPLOYEE)} className="text-xs py-2 bg-gray-100 hover:bg-gray-200 rounded">Employee</button>
+            <button onClick={() => demoLogin(UserRole.MANAGER)} className="text-xs py-2 bg-gray-100 hover:bg-gray-200 rounded">Manager</button>
+            <button onClick={() => demoLogin(UserRole.HR)} className="text-xs py-2 bg-gray-100 hover:bg-gray-200 rounded">HR</button>
           </div>
         </div>
       </div>
