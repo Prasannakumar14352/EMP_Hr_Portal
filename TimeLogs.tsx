@@ -923,13 +923,14 @@ const TimeLogs = () => {
                   )}
 
                   <div>
-                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description (Optional)</label>
+                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
                      <textarea 
+                        required
                         className="w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                         rows={3}
                         value={formData.description}
                         onChange={e => setFormData({...formData, description: e.target.value})}
-                        placeholder="Details about the work done..."
+                        placeholder="Enter details here..."
                      />
                   </div>
                   

@@ -318,7 +318,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Project</label>
                     <select 
                        required
-                       className="w-full border rounded-lg p-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                       className="w-full border rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
                        value={logForm.projectId}
                        onChange={e => {
                          setLogForm({...logForm, projectId: e.target.value, task: ''});
@@ -337,7 +337,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     {selectedProjectTasks.length > 0 && !isCustomTask ? (
                       <div className="flex gap-2">
                         <select 
-                          className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className="w-full border rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
                           value={logForm.task}
                           onChange={e => setLogForm({...logForm, task: e.target.value})}
                           required
@@ -345,7 +345,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                           <option value="">Select Task...</option>
                           {selectedProjectTasks.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
-                        <button type="button" onClick={() => setIsCustomTask(true)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500">Other</button>
+                        <button type="button" onClick={() => setIsCustomTask(true)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500 whitespace-nowrap">Other</button>
                       </div>
                     ) : (
                       <div className="flex gap-2">
@@ -353,12 +353,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                           required
                           type="text" 
                           placeholder="What did you work on?"
-                          className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                           value={logForm.task}
                           onChange={e => setLogForm({...logForm, task: e.target.value})}
                         />
                          {selectedProjectTasks.length > 0 && (
-                            <button type="button" onClick={() => setIsCustomTask(false)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500">List</button>
+                            <button type="button" onClick={() => setIsCustomTask(false)} className="px-3 border rounded-lg hover:bg-gray-50 text-xs font-bold text-gray-500 whitespace-nowrap">List</button>
                          )}
                       </div>
                     )}
@@ -368,7 +368,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Hours</label>
                        <input 
                           type="number" min="0" max="23"
-                          className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                           value={logForm.hours}
                           onChange={e => setLogForm({...logForm, hours: e.target.value})}
                        />
@@ -376,7 +376,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <div>
                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Minutes</label>
                        <select 
-                          className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                           value={logForm.minutes}
                           onChange={e => setLogForm({...logForm, minutes: e.target.value})}
                        >
@@ -386,6 +386,18 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                           <option value="45">45</option>
                        </select>
                     </div>
+                 </div>
+
+                 <div>
+                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+                     <textarea 
+                        required
+                        className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        rows={3}
+                        value={logForm.description}
+                        onChange={e => setLogForm({...logForm, description: e.target.value})}
+                        placeholder="Enter details here..."
+                     />
                  </div>
                  
                  <button type="submit" className="w-full bg-emerald-600 text-white py-2.5 rounded-lg font-bold shadow-md hover:bg-emerald-700 transition flex items-center justify-center gap-2 mt-2">
